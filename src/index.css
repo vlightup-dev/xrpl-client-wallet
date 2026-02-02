@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply min-w-[320px] min-h-[400px] text-sm antialiased;
+  }
+  #root {
+    @apply min-h-full p-3;
+  }
+}
