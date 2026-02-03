@@ -10,12 +10,13 @@ import {
   HomeNoWallet,
   HomeUnlock,
   CreatePassword,
+  BackupSeed,
   UnlockedDashboard,
 } from './components';
 
 const MIN_PASSWORD_LENGTH = 8;
 
-type View = 'home' | 'create-password' | 'unlocked';
+type View = 'home' | 'create-password' | 'backup-seed' | 'unlocked';
 
 export default function App() {
   const [view, setView] = useState<View>('home');
@@ -38,6 +39,9 @@ export default function App() {
 
   // Unlocked: XRPL wallet (address from decrypted wallet)
   const [address, setAddress] = useState<string | null>(null);
+
+  // Temporary seed storage for backup display (cleared after user confirms backup)
+  const [tempSeed, setTempSeed] = useState<string | null>(null);
 
   useEffect(() => {
     getWalletExists().then((exists) => {
@@ -69,15 +73,25 @@ export default function App() {
       await setWalletCreated(password, wallet.seed!, wallet.address);
       setWalletExists(true);
       setAddress(wallet.address);
+      setTempSeed(wallet.seed!);
       setPassword('');
       setConfirmPassword('');
-      setView('unlocked');
+      setView('backup-seed');
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Failed to create wallet');
     } finally {
       setCreating(false);
     }
   }, [password, confirmPassword]);
+
+  const handleBackupBack = useCallback(() => {
+    setView('create-password');
+  }, []);
+
+  const handleBackupContinue = useCallback(() => {
+    setTempSeed(null); // Clear seed from memory after user confirms backup
+    setView('unlocked');
+  }, []);
 
   const handleCreateBack = useCallback(() => {
     setView('home');
@@ -179,6 +193,16 @@ export default function App() {
         onBack={handleCreateBack}
         onNext={handleCreateNext}
         creating={creating}
+      />
+    );
+  }
+
+  if (view === 'backup-seed' && tempSeed) {
+    return (
+      <BackupSeed
+        seed={tempSeed}
+        onBack={handleBackupBack}
+        onContinue={handleBackupContinue}
       />
     );
   }
