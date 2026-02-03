@@ -1,15 +1,19 @@
-# GemWallet XRPL Testnet – Chrome Extension
+# XRPL Testnet Wallet – Chrome Extension
 
-Chrome extension built with **React** and **Vite** that integrates with [GemWallet](https://gemwallet.app) for **XRPL (XRP Ledger) on testnet**.
+Chrome extension built with **React** and **Vite** that creates and manages an **XRPL (XRP Ledger) wallet** on Testnet using [xrpl.js](https://js.xrpl.org/).
 
-- [GemWallet API Reference](https://gemwallet.app/docs/api/gemwallet-api-reference)
+- [XRPL.js Get Started](https://xrpl.org/docs/tutorials/javascript/build-apps/get-started)
+
+## Features
+
+- **Create a new wallet** – Set a password; a new XRPL wallet is generated and the seed is stored encrypted (PBKDF2 + AES-GCM).
+- **Unlock** – Enter your password to decrypt the wallet and open the dashboard.
+- **Dashboard** – View your address, balance (from Testnet), and **fund your wallet** via the Testnet faucet.
 
 ## Prerequisites
 
-1. **GemWallet extension** installed in Chrome  
-   - [Chrome Web Store – GemWallet](https://chromewebstore.google.com/detail/gem-wallet/mlbiliclbknfnaefhmhdkfcfahfddpkp)
-2. **GemWallet set to Testnet**  
-   - Open GemWallet → **Settings** → **Network** → choose **Testnet**
+- Chrome (or Chromium-based browser) for the extension.
+- No external wallet required; the extension holds the wallet (encrypted) locally.
 
 ## Setup
 
@@ -33,37 +37,32 @@ npm run build
 ## Usage
 
 1. Click the extension icon to open the popup.
-2. **Check GemWallet** – verifies the GemWallet extension is installed.
-3. **Connect Wallet** – reads address and network from GemWallet.
-4. The popup shows:
-   - Wallet address (when connected)
-   - Current network (Mainnet / Testnet / Devnet)
-   - A **Testnet** badge when GemWallet is on Testnet, or a hint to switch to Testnet in GemWallet.
+2. **Create a new wallet** – Set a password (and confirm). A new XRPL wallet is created and you are taken to the dashboard.
+3. **Unlock** (next time) – Enter your password to open the dashboard.
+4. **Dashboard** – Your address and balance are shown. Use **Fund your wallet** to open the Testnet faucet; paste your address there to receive test XRP.
 
-The extension listens to GemWallet **walletChanged** and **networkChanged** events and refreshes the displayed data when you switch wallet or network.
+## XRPL Testnet
+
+- **Faucet:** [XRPL Testnet Faucet](https://faucet.altnet.rippletest.net/) – get test XRP
+- **Explorer:** [Testnet Explorer](https://testnet.xrpl.org/) – view accounts and transactions
+
+The extension connects to Testnet at `wss://s.altnet.rippletest.net:51233` to fetch balance. Test tokens have no real value.
 
 ## Project structure
 
 ```
-gem-wallet/
+wallet/
 ├── public/
 │   └── manifest.json       # Chrome extension manifest (v3)
 ├── src/
-│   ├── App.tsx             # Popup UI + GemWallet API usage
-│   ├── App.css
+│   ├── App.tsx             # View state + wallet create/unlock flow
+│   ├── walletStorage.ts    # Encrypted seed storage (chrome.storage)
+│   ├── components/         # HomeNoWallet, HomeUnlock, CreatePassword, UnlockedDashboard
 │   ├── main.tsx
-│   ├── index.css
-│   └── vite-env.d.ts
+│   └── index.css
 ├── index.html
 ├── package.json
 ├── tsconfig.json
 ├── vite.config.ts
 └── README.md
 ```
-
-## XRPL Testnet
-
-- **Faucet:** [XRPL Testnet Faucet](https://faucet.altnet.rippletest.net/) (for test XRP)
-- **Explorer:** [Testnet Explorer](https://testnet.xrpl.org/)
-
-After loading the extension and setting GemWallet to Testnet, use **Connect Wallet** in the popup to confirm the address and that the network is **Testnet**.

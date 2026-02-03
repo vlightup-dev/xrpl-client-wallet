@@ -7,5 +7,5 @@
     "default_popup": "index.html",
     "default_title": "TRUSTAUTHY XRPL Wallet"
   },
-  "permissions": []
+  "permissions": ["storage"]
 }
