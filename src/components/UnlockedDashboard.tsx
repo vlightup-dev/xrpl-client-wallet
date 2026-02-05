@@ -12,9 +12,10 @@ type UnlockedDashboardProps = {
   address: string | null;
   wallet: Wallet | null;
   onLogout: () => void;
+  onRegisterSbt?: () => void;
 };
 
-export function UnlockedDashboard({ address, wallet, onLogout }: UnlockedDashboardProps) {
+export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt }: UnlockedDashboardProps) {
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -216,6 +217,18 @@ export function UnlockedDashboard({ address, wallet, onLogout }: UnlockedDashboa
           Or open faucet manually →
         </a>
       </section>
+
+      {onRegisterSbt && (
+        <section className="p-3 rounded-lg bg-gray-800 border border-gray-700">
+          <button
+            type="button"
+            onClick={onRegisterSbt}
+            className="w-full py-2 px-4 rounded-lg text-sm font-medium text-center text-sky-400 hover:text-white border border-sky-700 hover:border-sky-500 transition-colors"
+          >
+            Register SBT →
+          </button>
+        </section>
+      )}
 
       <footer className="mt-auto pt-3 border-t border-gray-700 text-center">
         <a

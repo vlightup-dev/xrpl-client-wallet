@@ -12,11 +12,12 @@ import {
   CreatePassword,
   BackupSeed,
   UnlockedDashboard,
+  RegisterSbtPage,
 } from './components';
 
 const MIN_PASSWORD_LENGTH = 8;
 
-type View = 'home' | 'create-password' | 'backup-seed' | 'unlocked';
+type View = 'home' | 'create-password' | 'backup-seed' | 'unlocked' | 'register-sbt';
 
 export default function App() {
   const [view, setView] = useState<View>('home');
@@ -216,11 +217,21 @@ export default function App() {
     );
   }
 
+  if (view === 'register-sbt' && address) {
+    return (
+      <RegisterSbtPage
+        address={address}
+        onBack={() => setView('unlocked')}
+      />
+    );
+  }
+
   return (
     <UnlockedDashboard
       address={address}
       wallet={wallet}
       onLogout={handleLogout}
+      onRegisterSbt={() => setView('register-sbt')}
     />
   );
 }

@@ -52,6 +52,17 @@ The extension connects to Testnet at `wss://s.altnet.rippletest.net:51233` to fe
 
 If your platform issues an SBT as an XRPL MPT, set `VITE_XRPL_MPT_ISSUANCE_ID` (e.g. in a `.env` file) to your platform’s MPT issuance ID.
 
+### Register SBT and credential storage
+
+From the dashboard, **Register SBT →** opens a form (nickname, API key, location). On success, the API returns `user_id`, `digital_id`, `digital_secret`, `geoauth_secret`, and `access_token`. These are stored in **`chrome.storage.local`** so they persist across browser and PC restarts (same as wallet data). No Firebase is used in the extension.
+
+To sync the JWT (e.g. across devices or with a web app), you can have your backend write the token to Firestore when issuing it and have other clients read it; the extension stays single-device with local storage.
+
+### Environment (optional)
+
+- `VITE_API_BASE_URL` or `VITE_API_SERVER_URL` – platform API base URL for register-sbt (e.g. same as platform-dashboard).
+- `VITE_XRPL_MPT_ISSUANCE_ID` – MPT issuance ID for SBT authorization when using “Get Test XRP”.
+
 ## Project structure
 
 ```
@@ -60,8 +71,9 @@ wallet/
 │   └── manifest.json       # Chrome extension manifest (v3)
 ├── src/
 │   ├── App.tsx             # View state + wallet create/unlock flow
-│   ├── walletStorage.ts    # Encrypted seed storage (chrome.storage)
-│   ├── components/         # HomeNoWallet, HomeUnlock, CreatePassword, UnlockedDashboard
+│   ├── walletStorage.ts    # Encrypted seed storage (chrome.storage.local)
+│   ├── trustauthyStorage.ts      # register-sbt response (chrome.storage.local)
+│   ├── components/         # UnlockedDashboard, RegisterSbtPage, …
 │   ├── main.tsx
 │   └── index.css
 ├── index.html
