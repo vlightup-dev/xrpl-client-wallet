@@ -1,16 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Client } from 'xrpl';
+import { Client, Wallet } from 'xrpl';
 
 const TESTNET_FAUCET_URL = 'https://faucet.altnet.rippletest.net/';
 const TESTNET_EXPLORER_ACCOUNT_URL = 'https://testnet.xrpl.org/accounts/';
 const TESTNET_WS = 'wss://s.altnet.rippletest.net:51233';
 
+/** Platform SBT MPT issuance ID; when set, "Get Test XRP" also submits MPTokenAuthorize so the wallet can receive SBT. */
+const MPT_ISSUANCE_ID = (import.meta.env.VITE_XRPL_MPT_ISSUANCE_ID as string)?.trim() || '';
+
 type UnlockedDashboardProps = {
   address: string | null;
+  wallet: Wallet | null;
   onLogout: () => void;
 };
 
-export function UnlockedDashboard({ address, onLogout }: UnlockedDashboardProps) {
+export function UnlockedDashboard({ address, wallet, onLogout }: UnlockedDashboardProps) {
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -83,7 +87,34 @@ export function UnlockedDashboard({ address, onLogout }: UnlockedDashboardProps)
       }
       const result = await response.json();
       const amount = result.amount ? (Number(result.amount) / 1_000_000).toFixed(0) : '1000';
-      setFundSuccess(`Received ${amount} XRP!`);
+      let successMsg = `Received ${amount} XRP!`;
+
+      // If platform MPT issuance ID is configured and we have the wallet, submit MPTokenAuthorize
+      // so this account can receive the SBT from the platform without tecNO_AUTH.
+      if (MPT_ISSUANCE_ID && wallet) {
+        const client = new Client(TESTNET_WS);
+        try {
+          await client.connect();
+          await client.submitAndWait(
+            {
+              TransactionType: 'MPTokenAuthorize',
+              Account: wallet.address,
+              MPTokenIssuanceID: MPT_ISSUANCE_ID,
+            },
+            { wallet },
+          );
+          successMsg += ' SBT token authorized.';
+        } catch (mptErr) {
+          const mptMsg = mptErr instanceof Error ? mptErr.message : String(mptErr);
+          successMsg += ` (MPT authorize failed: ${mptMsg})`;
+        } finally {
+          await client.disconnect();
+        }
+      } else {
+        throw new Error('MPT issuance ID is not configured');
+      }
+
+      setFundSuccess(successMsg);
       // Refresh balance after funding
       setTimeout(() => fetchBalance(), 2000);
     } catch (e) {
@@ -91,7 +122,7 @@ export function UnlockedDashboard({ address, onLogout }: UnlockedDashboardProps)
     } finally {
       setFunding(false);
     }
-  }, [address, fetchBalance]);
+  }, [address, wallet, fetchBalance]);
 
   if (!address) {
     return null;

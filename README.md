@@ -48,6 +48,10 @@ npm run build
 
 The extension connects to Testnet at `wss://s.altnet.rippletest.net:51233` to fetch balance. Test tokens have no real value.
 
+### SBT / MPT authorization
+
+If your platform issues an SBT as an XRPL MPT, set `VITE_XRPL_MPT_ISSUANCE_ID` (e.g. in a `.env` file) to your platform’s MPT issuance ID.
+
 ## Project structure
 
 ```

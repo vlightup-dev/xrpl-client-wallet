@@ -37,8 +37,9 @@ export default function App() {
   const [keepLoggedIn, setKeepLoggedIn] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
 
-  // Unlocked: XRPL wallet (address from decrypted wallet)
+  // Unlocked: XRPL wallet (address and wallet for signing, e.g. MPTokenAuthorize)
   const [address, setAddress] = useState<string | null>(null);
+  const [wallet, setWallet] = useState<InstanceType<typeof Wallet> | null>(null);
 
   // Temporary seed storage for backup display (cleared after user confirms backup)
   const [tempSeed, setTempSeed] = useState<string | null>(null);
@@ -69,11 +70,11 @@ export default function App() {
     }
     setCreating(true);
     try {
-      const wallet = Wallet.generate();
-      await setWalletCreated(password, wallet.seed!, wallet.address);
+      const newWallet = Wallet.generate();
+      await setWalletCreated(password, newWallet.seed!, newWallet.address);
       setWalletExists(true);
-      setAddress(wallet.address);
-      setTempSeed(wallet.seed!);
+      setAddress(newWallet.address);
+      setTempSeed(newWallet.seed!);
       setPassword('');
       setConfirmPassword('');
       setView('backup-seed');
@@ -89,9 +90,14 @@ export default function App() {
   }, []);
 
   const handleBackupContinue = useCallback(() => {
+    if (tempSeed) {
+      const w = Wallet.fromSeed(tempSeed);
+      setWallet(w);
+      setAddress(w.address);
+    }
     setTempSeed(null); // Clear seed from memory after user confirms backup
     setView('unlocked');
-  }, []);
+  }, [tempSeed]);
 
   const handleCreateBack = useCallback(() => {
     setView('home');
@@ -109,8 +115,9 @@ export default function App() {
         setUnlockError('Incorrect password');
         return;
       }
-      const wallet = Wallet.fromSeed(seed);
-      setAddress(wallet.address);
+      const w = Wallet.fromSeed(seed);
+      setWallet(w);
+      setAddress(w.address);
       setUnlockPassword('');
       setView('unlocked');
     } catch {
@@ -130,6 +137,7 @@ export default function App() {
     await clearWallet();
     setWalletExists(false);
     setAddress(null);
+    setWallet(null);
     setUnlockPassword('');
     setUnlockError(null);
     setView('home');
@@ -138,6 +146,7 @@ export default function App() {
   const handleLogout = useCallback(() => {
     setView('home');
     setAddress(null);
+    setWallet(null);
   }, []);
 
   const onImportWallet = useCallback(() => {
@@ -210,6 +219,7 @@ export default function App() {
   return (
     <UnlockedDashboard
       address={address}
+      wallet={wallet}
       onLogout={handleLogout}
     />
   );
