@@ -104,7 +104,6 @@ export function RegisterSbtPage({ address, onBack }: RegisterSbtPageProps) {
         digital_secret?: string;
         geoauth_secret?: string;
         access_token?: string;
-        location_hash?: string;
         error?: string;
       };
       if (!res.ok) {
@@ -124,7 +123,6 @@ export function RegisterSbtPage({ address, onBack }: RegisterSbtPageProps) {
           digital_secret: data.digital_secret,
           geoauth_secret: data.geoauth_secret,
           access_token: data.access_token,
-          location_hash: data.location_hash,
           api_key: apiKey.trim(),
         });
         setSuccess('SBT registered. Credentials saved on this device.');

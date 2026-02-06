@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Client } from 'xrpl';
+import { Client, Wallet } from 'xrpl';
+import { computeLocationSignature } from '../geohashLocationHash';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
@@ -20,16 +21,18 @@ function amountToDrops(amountXrp: string): string {
 
 type SendTokenPageProps = {
   address: string;
+  wallet: Wallet | null;
   onBack: () => void;
 };
 
-export function SendTokenPage({ address, onBack }: SendTokenPageProps) {
+export function SendTokenPage({ address, wallet, onBack }: SendTokenPageProps) {
   const [balanceXrp, setBalanceXrp] = useState<string>('0');
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [destinationTag, setDestinationTag] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -59,9 +62,14 @@ export function SendTokenPage({ address, onBack }: SendTokenPageProps) {
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
+    if (!wallet) {
+      setError('Wallet not available. Unlock the wallet to send.');
+      return;
+    }
     setError(null);
     setSuccess(null);
     setSubmitting(true);
+    setStepMessage('Step 1: Preparing escrow…');
 
     try {
       if (!API_BASE_URL) {
@@ -88,8 +96,8 @@ export function SendTokenPage({ address, onBack }: SendTokenPageProps) {
         ...(creds.api_key ? { 'X-API-KEY': creds.api_key } : {}),
       };
 
-      // 1) Create escrow
-      const createRes = await fetch(`${base}/api/v1/xrpl/escrow`, {
+      // 1) Prepare escrow: get condition + params (server stores fulfillment; client will create tx)
+      const prepareRes = await fetch(`${base}/api/v1/xrpl/escrow/prepare`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -97,78 +105,114 @@ export function SendTokenPage({ address, onBack }: SendTokenPageProps) {
           amount_drops: drops,
         }),
       });
-      const createData = (await createRes.json().catch(() => ({}))) as {
-        tx_hash?: string;
-        offer_sequence?: string;
+      const prepareData = (await prepareRes.json().catch(() => ({}))) as {
         condition?: string;
-        fulfillment?: string;
-        owner?: string;
+        cancel_after?: number;
+        finish_after?: number;
+        destination?: string;
+        amount_drops?: string;
         error?: string;
       };
-      if (!createRes.ok) {
+      if (!prepareRes.ok) {
         setError(
-          createData.error ||
-            (createRes.status === 404
-              ? 'Create escrow failed: 404 — API not found. Is the platform running with escrow routes? Use VITE_API_BASE_URL=http://localhost:8000 for local dev.'
-              : `Create escrow failed: ${createRes.status}`)
+          prepareData.error ||
+            (prepareRes.status === 404
+              ? 'Prepare escrow failed: 404 — API not found. Use VITE_API_BASE_URL=http://localhost:8000 for local dev.'
+              : `Prepare escrow failed: ${prepareRes.status}`)
         );
         return;
       }
-      if (createData.error || !createData.fulfillment || !createData.owner || !createData.offer_sequence || !createData.condition) {
-        setError(createData.error || 'Invalid create escrow response.');
+      if (prepareData.error || !prepareData.condition || prepareData.cancel_after == null) {
+        setError(prepareData.error || 'Invalid prepare escrow response.');
         return;
       }
 
-      // 2) Verify first location (required before release)
-      const timestamp = Math.floor(Date.now() / 1000);
-      const nonce = crypto.randomUUID?.() ?? `${timestamp}-${Math.random().toString(36).slice(2)}`;
-      const locationSignature = creds.location_hash ?? '';
-      const verifyRes = await fetch(`${base}/verify-first-location`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          digital_id: creds.digital_id,
-          timestamp,
-          nonce,
-          location_signature: locationSignature,
-        }),
-      });
-      if (!verifyRes.ok) {
-        const verifyErr = (await verifyRes.json().catch(() => ({}))) as { message?: string };
-        setError(verifyErr.message || 'Location verification failed. Complete SBT registration with location.');
-        return;
-      }
+      setStepMessage('Step 1: Prepared. Step 2: Creating escrow…');
 
-      // 3) Release escrow (finish)
-      const finishRes = await fetch(`${base}/api/v1/xrpl/escrow/finish`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          owner: createData.owner,
-          offer_sequence: createData.offer_sequence,
-          condition: createData.condition,
-          fulfillment: createData.fulfillment,
-        }),
-      });
-      const finishData = (await finishRes.json().catch(() => ({}))) as { tx_hash?: string; error?: string };
-      if (!finishRes.ok) {
-        setError(finishData.error || `Release escrow failed: ${finishRes.status}`);
-        return;
-      }
+      // 2) Build, sign, and submit EscrowCreate (client creates transaction with own XRP)
+      const client = new Client(TESTNET_WS);
+      await client.connect();
+      try {
+        const escrowTx: Record<string, unknown> = {
+          TransactionType: 'EscrowCreate',
+          Account: address,
+          Amount: drops,
+          Destination: recipient.trim(),
+          Condition: prepareData.condition,
+          CancelAfter: prepareData.cancel_after,
+        };
+        if (prepareData.finish_after != null) {
+          escrowTx.FinishAfter = prepareData.finish_after;
+        }
+        const destTag = destinationTag.trim();
+        if (destTag && !Number.isNaN(Number(destTag))) {
+          escrowTx.DestinationTag = Number(destTag);
+        }
+        const filled = await client.autofill(escrowTx as Parameters<Client['autofill']>[0]);
+        const signed = wallet.sign(filled);
+        const submitResult = await client.submitAndWait(signed.tx_blob);
+        const createTxHash = (submitResult.result as { hash?: string }).hash ?? '';
+        const offerSequence = (submitResult.result as { tx_json?: { Sequence?: number } }).tx_json?.Sequence;
+        if (offerSequence == null) {
+          setError('Could not read escrow sequence from ledger.');
+          return;
+        }
 
-      setSuccess(
-        `Payment sent. Escrow created: ${createData.tx_hash ?? '—'}. Released: ${finishData.tx_hash ?? '—'}.`
-      );
-      setRecipient('');
-      setAmount('');
-      setDestinationTag('');
-      setNotes('');
+        setStepMessage('Step 2: Created. Step 3: Releasing escrow…');
+
+        // 3) Release escrow: use current location to compute location_signature on client, then server verifies and submits EscrowFinish
+        // TODO: replace with actual geolocation (e.g. navigator.geolocation.getCurrentPosition or GNSS API)
+        const coords = {
+          latitude: 35.6895,
+          longitude: 139.6917,
+        };
+        const lat = coords.latitude;
+        const lon = coords.longitude;
+        const locationSignature = await computeLocationSignature(
+          creds.geoauth_secret,
+          creds.digital_secret,
+          lat,
+          lon
+        );
+        const timestamp = Math.floor(Date.now() / 1000); // Unix seconds (number)
+        const nonce = crypto.randomUUID?.() ?? `${timestamp}-${Math.random().toString(36).slice(2)}`;
+        const finishRes = await fetch(`${base}/api/v1/xrpl/escrow/finish`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            owner: address,
+            offer_sequence: String(offerSequence),
+            condition: prepareData.condition,
+            digital_id: String(creds.digital_id),
+            timestamp,
+            nonce,
+            location_signature: locationSignature,
+          }),
+        });
+        const finishData = (await finishRes.json().catch(() => ({}))) as { tx_hash?: string; error?: string };
+        if (!finishRes.ok) {
+          setError(finishData.error || `Release escrow failed: ${finishRes.status}`);
+          return;
+        }
+
+        setStepMessage('Step 3: Released.');
+        setSuccess(
+          `Payment sent. Escrow created: ${createTxHash || '—'}. Released: ${finishData.tx_hash ?? '—'}.`
+        );
+        setRecipient('');
+        setAmount('');
+        setDestinationTag('');
+        setNotes('');
+      } finally {
+        client.disconnect();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Request failed.');
     } finally {
       setSubmitting(false);
+      setStepMessage(null);
     }
-  }, [canSubmit]);
+  }, [canSubmit, address, wallet, amount, recipient, destinationTag]);
 
   return (
     <div className="flex flex-col gap-4 max-w-[360px] min-h-[400px] bg-gray-900 text-white p-4">
@@ -254,6 +298,11 @@ export function SendTokenPage({ address, onBack }: SendTokenPageProps) {
       </section>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
+      {stepMessage && (
+        <p className="text-xs text-sky-300 whitespace-pre-line" aria-live="polite">
+          {stepMessage}
+        </p>
+      )}
       {success && <p className="text-xs text-green-400">{success}</p>}
 
       <button

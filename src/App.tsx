@@ -231,6 +231,7 @@ export default function App() {
     return (
       <SendTokenPage
         address={address}
+        wallet={wallet}
         onBack={() => setView('unlocked')}
       />
     );

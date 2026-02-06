@@ -9,7 +9,6 @@ const SBT_STORAGE_KEYS = {
   DIGITAL_SECRET: 'sbtDigitalSecret',
   GEOAUTH_SECRET: 'sbtGeoauthSecret',
   ACCESS_TOKEN: 'sbtAccessToken',
-  LOCATION_HASH: 'sbtLocationHash',
 } as const;
 
 export type SbtCredentials = {
@@ -18,7 +17,6 @@ export type SbtCredentials = {
   digital_secret: string;
   geoauth_secret: string;
   access_token: string;
-  location_hash?: string;
 };
 
 export async function setSbtCredentials(creds: SbtCredentials): Promise<void> {
@@ -28,7 +26,6 @@ export async function setSbtCredentials(creds: SbtCredentials): Promise<void> {
     [SBT_STORAGE_KEYS.DIGITAL_SECRET]: creds.digital_secret,
     [SBT_STORAGE_KEYS.GEOAUTH_SECRET]: creds.geoauth_secret,
     [SBT_STORAGE_KEYS.ACCESS_TOKEN]: creds.access_token,
-    [SBT_STORAGE_KEYS.LOCATION_HASH]: creds.location_hash ?? null,
   });
 }
 
@@ -39,7 +36,6 @@ export async function getSbtCredentials(): Promise<SbtCredentials | null> {
     SBT_STORAGE_KEYS.DIGITAL_SECRET,
     SBT_STORAGE_KEYS.GEOAUTH_SECRET,
     SBT_STORAGE_KEYS.ACCESS_TOKEN,
-    SBT_STORAGE_KEYS.LOCATION_HASH,
   ]);
   const user_id = result[SBT_STORAGE_KEYS.USER_ID] as string | undefined;
   const access_token = result[SBT_STORAGE_KEYS.ACCESS_TOKEN] as string | undefined;
@@ -50,7 +46,6 @@ export async function getSbtCredentials(): Promise<SbtCredentials | null> {
     digital_secret: (result[SBT_STORAGE_KEYS.DIGITAL_SECRET] as string) ?? '',
     geoauth_secret: (result[SBT_STORAGE_KEYS.GEOAUTH_SECRET] as string) ?? '',
     access_token,
-    location_hash: (result[SBT_STORAGE_KEYS.LOCATION_HASH] as string) || undefined,
   };
 }
 
