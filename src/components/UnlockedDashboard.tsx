@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Client, Wallet } from 'xrpl';
+import { SendIcon } from './icons';
 
 const TESTNET_FAUCET_URL = 'https://faucet.altnet.rippletest.net/';
 const TESTNET_EXPLORER_ACCOUNT_URL = 'https://testnet.xrpl.org/accounts/';
@@ -13,9 +14,10 @@ type UnlockedDashboardProps = {
   wallet: Wallet | null;
   onLogout: () => void;
   onRegisterSbt?: () => void;
+  onSendPayment?: () => void;
 };
 
-export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt }: UnlockedDashboardProps) {
+export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, onSendPayment }: UnlockedDashboardProps) {
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -138,13 +140,25 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt }: 
           <h1 className="text-lg font-semibold text-white">XRPL Testnet</h1>
           <p className="mt-0.5 text-xs text-gray-400">Your XRPL wallet</p>
         </div>
-        <button
-          type="button"
-          onClick={onLogout}
-          className="text-xs text-gray-400 hover:text-white transition-colors"
-        >
-          Log out
-        </button>
+        <div className="flex items-center gap-3">
+          {onSendPayment && (
+            <button
+              type="button"
+              onClick={onSendPayment}
+              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+              title="Send payment"
+            >
+              <SendIcon className="w-5 h-5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onLogout}
+            className="text-xs text-gray-400 hover:text-white transition-colors"
+          >
+            Log out
+          </button>
+        </div>
       </header>
 
       <section className="p-3 rounded-lg bg-gray-800 border border-gray-700">

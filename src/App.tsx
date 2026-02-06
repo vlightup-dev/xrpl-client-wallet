@@ -13,11 +13,12 @@ import {
   BackupSeed,
   UnlockedDashboard,
   RegisterSbtPage,
+  SendTokenPage,
 } from './components';
 
 const MIN_PASSWORD_LENGTH = 8;
 
-type View = 'home' | 'create-password' | 'backup-seed' | 'unlocked' | 'register-sbt';
+type View = 'home' | 'create-password' | 'backup-seed' | 'unlocked' | 'register-sbt' | 'send-token';
 
 export default function App() {
   const [view, setView] = useState<View>('home');
@@ -226,12 +227,22 @@ export default function App() {
     );
   }
 
+  if (view === 'send-token' && address) {
+    return (
+      <SendTokenPage
+        address={address}
+        onBack={() => setView('unlocked')}
+      />
+    );
+  }
+
   return (
     <UnlockedDashboard
       address={address}
       wallet={wallet}
       onLogout={handleLogout}
       onRegisterSbt={() => setView('register-sbt')}
+      onSendPayment={() => setView('send-token')}
     />
   );
 }

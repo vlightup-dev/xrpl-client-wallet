@@ -28,15 +28,14 @@ export function RegisterSbtPage({ address, onBack }: RegisterSbtPageProps) {
       setLocationStatus('idle');
       return null;
     }
-    const options: PositionOptions = {
-      timeout: 25000,
-      maximumAge: 300000,
-      enableHighAccuracy: false,
-    };
     try {
-      //TODO: switch to fetching the location from the GNSS API
+      // TODO: switch to fetching the location from the GNSS API
       // const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-      //   navigator.geolocation.getCurrentPosition(resolve, reject, options);
+      //   navigator.geolocation.getCurrentPosition(resolve, reject, {
+      //     timeout: 25000,
+      //     maximumAge: 300000,
+      //     enableHighAccuracy: false,
+      //   });
       // });
       const result = {
         latitude: 35.6895,
@@ -126,6 +125,7 @@ export function RegisterSbtPage({ address, onBack }: RegisterSbtPageProps) {
           geoauth_secret: data.geoauth_secret,
           access_token: data.access_token,
           location_hash: data.location_hash,
+          api_key: apiKey.trim(),
         });
         setSuccess('SBT registered. Credentials saved on this device.');
       } else {
