@@ -7,4 +7,6 @@ export { BackupSeed } from './BackupSeed';
 export { UnlockedDashboard } from './UnlockedDashboard';
 export { RegisterSbtPage } from './RegisterSbtPage';
 export { SendTokenPage } from './SendTokenPage';
+export { PendingReleasesPage } from './PendingReleasesPage';
+export { MultisigConfigPage } from './MultisigConfigPage';
 export { EyeIcon, EyeOffIcon, ChevronLeftIcon } from './icons';

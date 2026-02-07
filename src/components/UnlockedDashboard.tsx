@@ -15,9 +15,12 @@ type UnlockedDashboardProps = {
   onLogout: () => void;
   onRegisterSbt?: () => void;
   onSendPayment?: () => void;
+  onPendingReleases?: () => void;
+  onConfigureMultisig?: () => void;
+  orgAccount?: string | null;
 };
 
-export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, onSendPayment }: UnlockedDashboardProps) {
+export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, onSendPayment, onPendingReleases, onConfigureMultisig, orgAccount }: UnlockedDashboardProps) {
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -89,8 +92,8 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
         throw new Error(`Faucet error: ${response.status}`);
       }
       const result = await response.json();
-      const amount = result.amount ? (Number(result.amount) / 1_000_000).toFixed(0) : '1000';
-      let successMsg = `Received XRP!`;
+      const amountXrp = result.amount ? (Number(result.amount) / 1_000_000).toFixed(0) : '1000';
+      let successMsg = `Received ${amountXrp} XRP!`;
 
       // If platform MPT issuance ID is configured and we have the wallet, submit MPTokenAuthorize
       // so this account can receive the SBT from the platform without tecNO_AUTH.
@@ -149,6 +152,16 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
               title="Send payment"
             >
               <SendIcon className="w-5 h-5" />
+            </button>
+          )}
+          {onPendingReleases && orgAccount && (
+            <button
+              type="button"
+              onClick={onPendingReleases}
+              className="text-xs text-sky-400 hover:text-white transition-colors"
+              title="Pending releases (multi-sig)"
+            >
+              Pending
             </button>
           )}
           <button
@@ -240,6 +253,18 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
             className="w-full py-2 px-4 rounded-lg text-sm font-medium text-center text-sky-400 hover:text-white border border-sky-700 hover:border-sky-500 transition-colors"
           >
             Register SBT →
+          </button>
+        </section>
+      )}
+
+      {onConfigureMultisig && (
+        <section className="p-3 rounded-lg bg-gray-800 border border-gray-700">
+          <button
+            type="button"
+            onClick={onConfigureMultisig}
+            className="w-full py-2 px-4 rounded-lg text-sm font-medium text-center text-sky-400 hover:text-white border border-sky-700 hover:border-sky-500 transition-colors"
+          >
+            Configure multi-sig
           </button>
         </section>
       )}

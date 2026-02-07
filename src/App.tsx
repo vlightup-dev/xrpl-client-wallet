@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Wallet } from 'xrpl';
+import { getMultisigOrgAccount } from './multisigStorage';
 import {
   getWalletExists,
   setWalletCreated,
@@ -14,11 +15,13 @@ import {
   UnlockedDashboard,
   RegisterSbtPage,
   SendTokenPage,
+  PendingReleasesPage,
+  MultisigConfigPage,
 } from './components';
 
 const MIN_PASSWORD_LENGTH = 8;
 
-type View = 'home' | 'create-password' | 'backup-seed' | 'unlocked' | 'register-sbt' | 'send-token';
+type View = 'home' | 'create-password' | 'backup-seed' | 'unlocked' | 'register-sbt' | 'send-token' | 'pending-releases' | 'multisig-config';
 
 export default function App() {
   const [view, setView] = useState<View>('home');
@@ -42,9 +45,16 @@ export default function App() {
   // Unlocked: XRPL wallet (address and wallet for signing, e.g. MPTokenAuthorize)
   const [address, setAddress] = useState<string | null>(null);
   const [wallet, setWallet] = useState<InstanceType<typeof Wallet> | null>(null);
+  const [orgAccount, setOrgAccount] = useState<string | null>(null);
 
   // Temporary seed storage for backup display (cleared after user confirms backup)
   const [tempSeed, setTempSeed] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (view === 'unlocked' || view === 'send-token' || view === 'pending-releases') {
+      getMultisigOrgAccount().then(setOrgAccount);
+    }
+  }, [view]);
 
   useEffect(() => {
     getWalletExists().then((exists) => {
@@ -233,6 +243,28 @@ export default function App() {
         address={address}
         wallet={wallet}
         onBack={() => setView('unlocked')}
+        orgAccount={orgAccount}
+      />
+    );
+  }
+
+  if (view === 'pending-releases' && orgAccount && wallet) {
+    return (
+      <PendingReleasesPage
+        orgAccount={orgAccount}
+        wallet={wallet}
+        onBack={() => setView('unlocked')}
+      />
+    );
+  }
+
+  if (view === 'multisig-config' && address && wallet) {
+    return (
+      <MultisigConfigPage
+        address={address}
+        wallet={wallet}
+        onBack={() => setView('unlocked')}
+        onSaved={() => getMultisigOrgAccount().then(setOrgAccount)}
       />
     );
   }
@@ -244,6 +276,9 @@ export default function App() {
       onLogout={handleLogout}
       onRegisterSbt={() => setView('register-sbt')}
       onSendPayment={() => setView('send-token')}
+      onPendingReleases={orgAccount ? () => setView('pending-releases') : undefined}
+      onConfigureMultisig={() => setView('multisig-config')}
+      orgAccount={orgAccount}
     />
   );
 }

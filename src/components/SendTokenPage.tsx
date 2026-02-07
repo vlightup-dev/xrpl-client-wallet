@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Client, Wallet } from 'xrpl';
+import { Client, decode, Wallet } from 'xrpl';
 import { computeLocationSignature } from '../geohashLocationHash';
+import { getMultisigOrgAccount } from '../multisigStorage';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
@@ -19,14 +20,18 @@ function amountToDrops(amountXrp: string): string {
   return Math.round(n * XRP_TO_DROPS).toString();
 }
 
+const MULTISIG_FEE_DROPS = '30'; // 2 signers: (N+1)*10 drops
+
 type SendTokenPageProps = {
   address: string;
   wallet: Wallet | null;
   onBack: () => void;
+  orgAccount?: string | null;
 };
 
-export function SendTokenPage({ address, wallet, onBack }: SendTokenPageProps) {
+export function SendTokenPage({ address, wallet, onBack, orgAccount: orgAccountProp }: SendTokenPageProps) {
   const [balanceXrp, setBalanceXrp] = useState<string>('0');
+  const [orgAccount, setOrgAccount] = useState<string | null>(null);
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [destinationTag, setDestinationTag] = useState('');
@@ -35,6 +40,14 @@ export function SendTokenPage({ address, wallet, onBack }: SendTokenPageProps) {
   const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (orgAccountProp !== undefined) {
+      setOrgAccount(orgAccountProp ?? null);
+      return;
+    }
+    getMultisigOrgAccount().then(setOrgAccount);
+  }, [orgAccountProp]);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,9 +140,130 @@ export function SendTokenPage({ address, wallet, onBack }: SendTokenPageProps) {
         return;
       }
 
+      const coords = { latitude: 35.6895, longitude: 139.6917 };
+      const timestamp = Math.floor(Date.now() / 1000);
+      const nonce = crypto.randomUUID?.() ?? `${timestamp}-${Math.random().toString(36).slice(2)}`;
+      const locationSignature = await computeLocationSignature(
+        creds.geoauth_secret,
+        creds.digital_secret,
+        coords.latitude,
+        coords.longitude
+      );
+
+      if (orgAccount) {
+        // ——— Multi-sig Signer 1: prepare → request-release → build Create & Finish → sign both → submit-first-signatures ———
+        setStepMessage('Step 1: Prepared. Step 2: Requesting release…');
+
+        const client = new Client(TESTNET_WS);
+        await client.connect();
+        try {
+          const accountRes = await client.request({
+            command: 'account_info',
+            account: orgAccount,
+            ledger_index: 'validated',
+          });
+          const accResult = accountRes.result as { account_data?: { Sequence?: number }; error?: string };
+          if (accResult.error === 'actNotFound') {
+            setError('Org account not found on ledger.');
+            return;
+          }
+          const nextSequence = accResult.account_data?.Sequence ?? 0;
+
+          const requestReleaseRes = await fetch(`${base}/api/v1/xrpl/escrow/request-release`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              owner: orgAccount,
+              offer_sequence: String(nextSequence),
+              condition: prepareData.condition,
+              digital_id: String(creds.digital_id),
+              timestamp,
+              nonce,
+              location_signature: locationSignature,
+            }),
+          });
+          const requestReleaseData = (await requestReleaseRes.json().catch(() => ({}))) as {
+            fulfillment?: string;
+            destination?: string;
+            error?: string;
+          };
+          if (!requestReleaseRes.ok) {
+            setError(requestReleaseData.error || `Request release failed: ${requestReleaseRes.status}`);
+            return;
+          }
+          if (!requestReleaseData.fulfillment) {
+            setError(requestReleaseData.error || 'Missing fulfillment from request-release.');
+            return;
+          }
+
+          setStepMessage('Step 2: Release authorized. Step 3: Creating and signing escrow…');
+
+          const destTag = destinationTag.trim();
+          const createTx: Record<string, unknown> = {
+            TransactionType: 'EscrowCreate',
+            Account: orgAccount,
+            Amount: drops,
+            Destination: recipient.trim(),
+            Condition: prepareData.condition,
+            CancelAfter: prepareData.cancel_after,
+            Sequence: nextSequence,
+            Fee: MULTISIG_FEE_DROPS,
+          };
+          if (prepareData.finish_after != null) (createTx as Record<string, unknown>).FinishAfter = prepareData.finish_after;
+          if (destTag && !Number.isNaN(Number(destTag))) (createTx as Record<string, unknown>).DestinationTag = Number(destTag);
+
+          const finishTx: Record<string, unknown> = {
+            TransactionType: 'EscrowFinish',
+            Account: orgAccount,
+            Owner: orgAccount,
+            OfferSequence: nextSequence,
+            Condition: prepareData.condition,
+            Fulfillment: requestReleaseData.fulfillment,
+            Fee: MULTISIG_FEE_DROPS,
+          };
+
+          const signedCreate = wallet.sign(createTx as Parameters<Wallet['sign']>[0], orgAccount);
+          const signedFinish = wallet.sign(finishTx as Parameters<Wallet['sign']>[0], orgAccount);
+          const escrowCreateTxJson = decode(signedCreate.tx_blob) as Record<string, unknown>;
+          const escrowFinishTxJson = decode(signedFinish.tx_blob) as Record<string, unknown>;
+          // Ensure plain JSON-serializable objects for the API
+          const createPayload = JSON.parse(JSON.stringify(escrowCreateTxJson)) as Record<string, unknown>;
+          const finishPayload = JSON.parse(JSON.stringify(escrowFinishTxJson)) as Record<string, unknown>;
+
+          setStepMessage('Step 3: Submitting first signatures…');
+
+          const submitFirstRes = await fetch(`${base}/api/v1/xrpl/escrow/submit-first-signatures`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              condition: prepareData.condition,
+              escrow_create_tx_json: createPayload,
+              escrow_finish_tx_json: finishPayload,
+            }),
+          });
+          const submitFirstData = (await submitFirstRes.json().catch(() => ({}))) as { pending_id?: string; error?: string };
+          if (!submitFirstRes.ok) {
+            setError(submitFirstData.error || `Submit first signatures failed: ${submitFirstRes.status}`);
+            return;
+          }
+
+          setStepMessage('Awaiting second signer. You can close this; the other signer can complete the release from Pending releases.');
+          setSuccess(
+            `Escrow prepared. Pending ID: ${submitFirstData.pending_id ?? prepareData.condition}. A second signer must complete the release.`
+          );
+          setRecipient('');
+          setAmount('');
+          setDestinationTag('');
+          setNotes('');
+        } finally {
+          client.disconnect();
+        }
+        return;
+      }
+
+      // ——— Single-sig: build, sign, submit EscrowCreate then finish via server ———
       setStepMessage('Step 1: Prepared. Step 2: Creating escrow…');
 
-      // 2) Build, sign, and submit EscrowCreate (client creates transaction with own XRP)
       const client = new Client(TESTNET_WS);
       await client.connect();
       try {
@@ -160,22 +294,6 @@ export function SendTokenPage({ address, wallet, onBack }: SendTokenPageProps) {
 
         setStepMessage('Step 2: Created. Step 3: Releasing escrow…');
 
-        // 3) Release escrow: use current location to compute location_signature on client, then server verifies and submits EscrowFinish
-        // TODO: replace with actual geolocation (e.g. navigator.geolocation.getCurrentPosition or GNSS API)
-        const coords = {
-          latitude: 35.6895,
-          longitude: 139.6917,
-        };
-        const lat = coords.latitude;
-        const lon = coords.longitude;
-        const locationSignature = await computeLocationSignature(
-          creds.geoauth_secret,
-          creds.digital_secret,
-          lat,
-          lon
-        );
-        const timestamp = Math.floor(Date.now() / 1000); // Unix seconds (number)
-        const nonce = crypto.randomUUID?.() ?? `${timestamp}-${Math.random().toString(36).slice(2)}`;
         const finishRes = await fetch(`${base}/api/v1/xrpl/escrow/finish`, {
           method: 'POST',
           headers,
@@ -212,7 +330,7 @@ export function SendTokenPage({ address, wallet, onBack }: SendTokenPageProps) {
       setSubmitting(false);
       setStepMessage(null);
     }
-  }, [canSubmit, address, wallet, amount, recipient, destinationTag]);
+  }, [canSubmit, address, wallet, amount, recipient, destinationTag, orgAccount]);
 
   return (
     <div className="flex flex-col gap-4 max-w-[360px] min-h-[400px] bg-gray-900 text-white p-4">
