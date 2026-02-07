@@ -90,7 +90,7 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
       }
       const result = await response.json();
       const amount = result.amount ? (Number(result.amount) / 1_000_000).toFixed(0) : '1000';
-      let successMsg = `Received ${amount} XRP!`;
+      let successMsg = `Received XRP!`;
 
       // If platform MPT issuance ID is configured and we have the wallet, submit MPTokenAuthorize
       // so this account can receive the SBT from the platform without tecNO_AUTH.
