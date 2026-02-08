@@ -5,6 +5,8 @@ import { ChevronLeftIcon } from './icons';
 
 const TESTNET_WS = 'wss://s.altnet.rippletest.net:51233';
 
+type MultisigMode = '2-of-2' | '2-of-3' | '3-of-3';
+
 type MultisigConfigPageProps = {
   address: string;
   wallet: Wallet | null;
@@ -16,7 +18,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
   const [signer2, setSigner2] = useState('');
   const [signer3, setSigner3] = useState('');
   const [signer4, setSigner4] = useState('');
-  const [threshold, setThreshold] = useState<2 | 3>(2);
+  const [mode, setMode] = useState<MultisigMode>('2-of-2');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -24,14 +26,15 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
   const signer2Trim = signer2.trim();
   const signer3Trim = signer3.trim();
   const signer4Trim = signer4.trim();
-  const needThird = threshold === 3;
+  const needThirdSigner = mode === '2-of-3' || mode === '3-of-3';
+  const quorum = mode === '3-of-3' ? 3 : 2;
   const notSelf = (s: string) => s.length > 0 && s !== address;
   const canSave =
-    (threshold === 2 &&
+    (mode === '2-of-2' &&
       notSelf(signer2Trim) &&
       notSelf(signer3Trim) &&
       signer2Trim !== signer3Trim) ||
-    (threshold === 3 &&
+    (needThirdSigner &&
       notSelf(signer2Trim) &&
       notSelf(signer3Trim) &&
       notSelf(signer4Trim) &&
@@ -49,20 +52,19 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
         { SignerEntry: { Account: signer2Trim, SignerWeight: 1 } },
         { SignerEntry: { Account: signer3Trim, SignerWeight: 1 } },
       ];
-      if (threshold === 3) {
+      if (needThirdSigner) {
         if (!signer4Trim) {
-          setError('For 3-of-3 add a third signer address.');
+          setError(`For ${mode} add a third signer address.`);
           await client.disconnect();
           setSubmitting(false);
           return;
         }
         entries.push({ SignerEntry: { Account: signer4Trim, SignerWeight: 1 } });
       }
-      // Use chosen threshold as quorum (we require enough signers above)
       const tx = {
         TransactionType: 'SignerListSet' as const,
         Account: address,
-        SignerQuorum: threshold,
+        SignerQuorum: quorum,
         SignerEntries: entries,
       };
       const filled = await client.autofill(tx as Parameters<Client['autofill']>[0]);
@@ -81,7 +83,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
       client.disconnect();
       setSubmitting(false);
     }
-  }, [address, wallet, threshold, signer2Trim, signer3Trim, signer4Trim, canSave, onSaved]);
+  }, [address, wallet, mode, needThirdSigner, quorum, signer2Trim, signer3Trim, signer4Trim, canSave, onSaved]);
 
   return (
     <div className="flex flex-col gap-4 max-w-[360px] min-h-[400px] bg-gray-900 text-white p-4">
@@ -99,7 +101,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
       </header>
 
       <p className="text-xs text-gray-400">
-        This wallet will become the multi-sig account. Add 2 other signers for 2-of-2, or 3 for 3-of-3. XRPL does not allow the multi-sig account itself in the list; to sign as yourself, use a different address (e.g. another wallet or a regular key).
+        This wallet will become the multi-sig account. Choose 2-of-2, 2-of-3, or 3-of-3 and add the other signer addresses. XRPL does not allow the multi-sig account itself in the list; to sign as yourself, use a different address (e.g. another wallet or a regular key).
       </p>
 
       <section className="flex flex-col gap-2">
@@ -109,17 +111,18 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
       </section>
 
       <section className="flex flex-col gap-2">
-        <label className="text-xs font-medium text-gray-400" htmlFor="ms-threshold">
-          Threshold
+        <label className="text-xs font-medium text-gray-400" htmlFor="ms-mode">
+          Multi-sig type
         </label>
         <select
-          id="ms-threshold"
-          value={threshold}
-          onChange={(e) => setThreshold(e.target.value === '3' ? 3 : 2)}
+          id="ms-mode"
+          value={mode}
+          onChange={(e) => setMode(e.target.value as MultisigMode)}
           className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm focus:border-sky-500 focus:outline-none"
         >
-          <option value={2}>2 (2-of-2)</option>
-          <option value={3}>3 (3-of-3)</option>
+          <option value="2-of-2">2-of-2 (2 signers, quorum 2)</option>
+          <option value="2-of-3">2-of-3 (3 signers, quorum 2)</option>
+          <option value="3-of-3">3-of-3 (3 signers, quorum 3)</option>
         </select>
       </section>
 
@@ -139,7 +142,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
 
       <section className="flex flex-col gap-2">
         <label className="text-xs font-medium text-gray-400" htmlFor="ms-signer3">
-          Signer 3 address (required for 2-of-2 and 3-of-3)
+          Signer 3 address {needThirdSigner ? '(required for 2-of-3 and 3-of-3)' : '(required for 2-of-2)'}
         </label>
         <input
           id="ms-signer3"
@@ -151,10 +154,10 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
         />
       </section>
 
-      {needThird && (
+      {needThirdSigner && (
         <section className="flex flex-col gap-2">
           <label className="text-xs font-medium text-gray-400" htmlFor="ms-signer4">
-            Signer 4 address (required for 3-of-3)
+            Signer 4 address (required for 2-of-3 and 3-of-3)
           </label>
           <input
             id="ms-signer4"
