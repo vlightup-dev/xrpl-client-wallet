@@ -164,6 +164,14 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
 
         setStepMessage('Completing release…');
 
+        const timestampComplete = Math.floor(Date.now() / 1000);
+        const nonceComplete = crypto.randomUUID?.() ?? `${timestampComplete}-${Math.random().toString(36).slice(2)}`;
+        const locationSignatureComplete = await computeLocationSignature(
+          creds.geoauth_secret,
+          creds.digital_secret,
+          coords.latitude,
+          coords.longitude
+        );
         const completeRes = await fetch(`${base}/api/v1/xrpl/escrow/complete-release`, {
           method: 'POST',
           headers,
@@ -171,9 +179,9 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
             pending_id: pendingId,
             condition: pendingId,
             digital_id: String(creds.digital_id),
-            timestamp,
-            nonce,
-            location_signature: locationSignature,
+            timestamp: timestampComplete,
+            nonce: nonceComplete,
+            location_signature: locationSignatureComplete,
             escrow_create_tx_json: combinedCreateJson,
             escrow_finish_tx_json: combinedFinishJson,
           }),
