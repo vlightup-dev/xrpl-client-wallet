@@ -54,7 +54,11 @@ export function PendingReleasesPage({ orgAccount, wallet, onBack }: PendingRelea
       const res = await fetch(`${base}/api/v1/xrpl/escrow/pending-releases?account=${encodeURIComponent(orgAccount)}`, { headers });
       const data = (await res.json().catch(() => ({}))) as { pending?: PendingItem[]; error?: string };
       if (!res.ok) {
-        setError(data.error || `Failed to load: ${res.status}`);
+        const msg =
+          res.status === 401
+            ? (data.error || 'Sign-in required or session expired. Register SBT and sign in again to view pending releases.')
+            : (data.error || `Failed to load: ${res.status}`);
+        setError(msg);
         setPending([]);
         return;
       }

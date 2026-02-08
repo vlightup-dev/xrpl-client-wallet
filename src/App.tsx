@@ -17,6 +17,7 @@ import {
   SendTokenPage,
   PendingReleasesPage,
   MultisigConfigPage,
+  ChevronLeftIcon,
 } from './components';
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -50,11 +51,14 @@ export default function App() {
   // Temporary seed storage for backup display (cleared after user confirms backup)
   const [tempSeed, setTempSeed] = useState<string | null>(null);
 
+  // Load org account when wallet exists and when entering unlocked/send/pending so dashboard can fetch pending immediately after login
   useEffect(() => {
-    if (view === 'unlocked' || view === 'send-token' || view === 'pending-releases') {
+    if (walletExists) {
       getMultisigOrgAccount().then(setOrgAccount);
+    } else {
+      setOrgAccount(null);
     }
-  }, [view]);
+  }, [walletExists, view]);
 
   useEffect(() => {
     getWalletExists().then((exists) => {
@@ -248,13 +252,27 @@ export default function App() {
     );
   }
 
-  if (view === 'pending-releases' && orgAccount && wallet) {
+  if (view === 'pending-releases' && wallet) {
+    if (orgAccount) {
+      return (
+        <PendingReleasesPage
+          orgAccount={orgAccount}
+          wallet={wallet}
+          onBack={() => setView('unlocked')}
+        />
+      );
+    }
     return (
-      <PendingReleasesPage
-        orgAccount={orgAccount}
-        wallet={wallet}
-        onBack={() => setView('unlocked')}
-      />
+      <div className="flex flex-col gap-4 max-w-[360px] min-h-[400px] bg-gray-900 text-white p-4">
+        <header className="flex items-center justify-between pb-2 border-b border-gray-700">
+          <button type="button" onClick={() => setView('unlocked')} className="p-1 rounded text-gray-400 hover:text-white">
+            <ChevronLeftIcon className="w-6 h-6" />
+          </button>
+          <h1 className="text-lg font-semibold">Pending releases</h1>
+          <span className="w-8" />
+        </header>
+        <p className="text-sm text-gray-400">Configure multi-sig first to see pending releases.</p>
+      </div>
     );
   }
 
@@ -276,7 +294,7 @@ export default function App() {
       onLogout={handleLogout}
       onRegisterSbt={() => setView('register-sbt')}
       onSendPayment={() => setView('send-token')}
-      onPendingReleases={orgAccount ? () => setView('pending-releases') : undefined}
+      onPendingReleases={() => setView('pending-releases')}
       onConfigureMultisig={() => setView('multisig-config')}
       orgAccount={orgAccount}
     />

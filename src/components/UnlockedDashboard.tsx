@@ -1,10 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Client, Wallet } from 'xrpl';
-import { SendIcon } from './icons';
+import { getSbtCredentials } from '../trustauthyStorage';
+import { PendingIcon, SendIcon } from './icons';
 
 const TESTNET_FAUCET_URL = 'https://faucet.altnet.rippletest.net/';
 const TESTNET_EXPLORER_ACCOUNT_URL = 'https://testnet.xrpl.org/accounts/';
 const TESTNET_WS = 'wss://s.altnet.rippletest.net:51233';
+const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string)?.trim() ||
+  (import.meta.env.VITE_API_SERVER_URL as string)?.trim() ||
+  '';
 
 /** Platform SBT MPT issuance ID; when set, "Get Test XRP" also submits MPTokenAuthorize so the wallet can receive SBT. */
 const MPT_ISSUANCE_ID = (import.meta.env.VITE_XRPL_MPT_ISSUANCE_ID as string)?.trim() || '';
@@ -28,6 +33,39 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
   const [funding, setFunding] = useState(false);
   const [fundError, setFundError] = useState<string | null>(null);
   const [fundSuccess, setFundSuccess] = useState<string | null>(null);
+
+  const [pendingCount, setPendingCount] = useState<number>(0);
+
+  const fetchPendingCount = useCallback(async () => {
+    if (!orgAccount || !API_BASE_URL) {
+      setPendingCount(0);
+      return;
+    }
+    const creds = await getSbtCredentials();
+    if (!creds?.access_token) {
+      setPendingCount(0);
+      return;
+    }
+    const base = API_BASE_URL.replace(/\/$/, '');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${creds.access_token}`,
+      ...(creds.api_key ? { 'X-API-KEY': creds.api_key } : {}),
+    };
+    try {
+      const res = await fetch(`${base}/api/v1/xrpl/escrow/pending-releases?account=${encodeURIComponent(orgAccount)}`, { headers });
+      if (!res.ok) return;
+      const data = (await res.json().catch(() => ({}))) as { pending?: unknown[] };
+      setPendingCount(Array.isArray(data.pending) ? data.pending.length : 0);
+    } catch {
+      setPendingCount(0);
+    }
+  }, [orgAccount]);
+
+  useEffect(() => {
+    if (orgAccount) fetchPendingCount();
+    else setPendingCount(0);
+  }, [orgAccount, fetchPendingCount]);
 
   const fetchBalance = useCallback(async () => {
     if (!address) return;
@@ -154,12 +192,26 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
               <SendIcon className="w-5 h-5" />
             </button>
           )}
-          {onPendingReleases && orgAccount && (
+          {onPendingReleases && (
+            <button
+              type="button"
+              onClick={onPendingReleases}
+              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors relative"
+              title={pendingCount > 0 ? `${pendingCount} pending release(s) to sign` : 'Pending releases'}
+            >
+              <PendingIcon className="w-5 h-5" />
+              {orgAccount && pendingCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-gray-900">
+                  {pendingCount > 9 ? '9+' : pendingCount}
+                </span>
+              )}
+            </button>
+          )}
+          {onPendingReleases && (
             <button
               type="button"
               onClick={onPendingReleases}
               className="text-xs text-sky-400 hover:text-white transition-colors"
-              title="Pending releases (multi-sig)"
             >
               Pending
             </button>
@@ -253,6 +305,21 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
             className="w-full py-2 px-4 rounded-lg text-sm font-medium text-center text-sky-400 hover:text-white border border-sky-700 hover:border-sky-500 transition-colors"
           >
             Register SBT →
+          </button>
+        </section>
+      )}
+
+      {pendingCount > 0 && onPendingReleases && (
+        <section className="p-3 rounded-lg bg-amber-900/30 border border-amber-600">
+          <p className="text-xs text-amber-200 mb-2">
+            You have {pendingCount} pending release{pendingCount !== 1 ? 's' : ''} to sign.
+          </p>
+          <button
+            type="button"
+            onClick={onPendingReleases}
+            className="w-full py-2 px-4 rounded-lg text-sm font-medium text-center text-amber-200 hover:text-white border border-amber-600 hover:border-amber-500 transition-colors"
+          >
+            Sign pending release{pendingCount !== 1 ? 's' : ''} →
           </button>
         </section>
       )}

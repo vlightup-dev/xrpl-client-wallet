@@ -9,4 +9,4 @@ export { RegisterSbtPage } from './RegisterSbtPage';
 export { SendTokenPage } from './SendTokenPage';
 export { PendingReleasesPage } from './PendingReleasesPage';
 export { MultisigConfigPage } from './MultisigConfigPage';
-export { EyeIcon, EyeOffIcon, ChevronLeftIcon } from './icons';
+export { EyeIcon, EyeOffIcon, ChevronLeftIcon, PendingIcon } from './icons';
