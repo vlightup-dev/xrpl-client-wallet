@@ -22,10 +22,9 @@ type UnlockedDashboardProps = {
   onSendPayment?: () => void;
   onPendingReleases?: () => void;
   onConfigureMultisig?: () => void;
-  orgAccount?: string | null;
 };
 
-export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, onSendPayment, onPendingReleases, onConfigureMultisig, orgAccount }: UnlockedDashboardProps) {
+export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, onSendPayment, onPendingReleases, onConfigureMultisig }: UnlockedDashboardProps) {
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -37,7 +36,7 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
   const [pendingCount, setPendingCount] = useState<number>(0);
 
   const fetchPendingCount = useCallback(async () => {
-    if (!orgAccount || !API_BASE_URL) {
+    if (!API_BASE_URL) {
       setPendingCount(0);
       return;
     }
@@ -53,19 +52,18 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
       ...(creds.api_key ? { 'X-API-KEY': creds.api_key } : {}),
     };
     try {
-      const res = await fetch(`${base}/api/v1/xrpl/escrow/pending-releases?account=${encodeURIComponent(orgAccount)}`, { headers });
+      const res = await fetch(`${base}/api/v1/xrpl/escrow/pending-releases`, { headers });
       if (!res.ok) return;
       const data = (await res.json().catch(() => ({}))) as { pending?: unknown[] };
       setPendingCount(Array.isArray(data.pending) ? data.pending.length : 0);
     } catch {
       setPendingCount(0);
     }
-  }, [orgAccount]);
+  }, []);
 
   useEffect(() => {
-    if (orgAccount) fetchPendingCount();
-    else setPendingCount(0);
-  }, [orgAccount, fetchPendingCount]);
+    fetchPendingCount();
+  }, [fetchPendingCount]);
 
   const fetchBalance = useCallback(async () => {
     if (!address) return;
@@ -201,7 +199,7 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
             >
               <span className="relative">
                 <PendingIcon className="w-5 h-5" />
-                {orgAccount && pendingCount > 0 && (
+                {pendingCount > 0 && (
                   <span className="absolute -top-0.5 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-gray-900">
                     {pendingCount > 9 ? '9+' : pendingCount}
                   </span>

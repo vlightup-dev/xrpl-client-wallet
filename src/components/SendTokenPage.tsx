@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Client, decode, Wallet } from 'xrpl';
 import { computeLocationSignature } from '../geohashLocationHash';
-import { getMultisigOrgAccount } from '../multisigStorage';
+import { getMultisigAccount } from '../multisigStorage';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
@@ -26,12 +26,12 @@ type SendTokenPageProps = {
   address: string;
   wallet: Wallet | null;
   onBack: () => void;
-  orgAccount?: string | null;
+  multisigAccount?: string | null;
 };
 
-export function SendTokenPage({ address, wallet, onBack, orgAccount: orgAccountProp }: SendTokenPageProps) {
+export function SendTokenPage({ address, wallet, onBack, multisigAccount: multisigAccountProp }: SendTokenPageProps) {
   const [balanceXrp, setBalanceXrp] = useState<string>('0');
-  const [orgAccount, setOrgAccount] = useState<string | null>(null);
+  const [multisigAccount, setMultisigAccount] = useState<string | null>(null);
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [destinationTag, setDestinationTag] = useState('');
@@ -42,12 +42,12 @@ export function SendTokenPage({ address, wallet, onBack, orgAccount: orgAccountP
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    if (orgAccountProp !== undefined) {
-      setOrgAccount(orgAccountProp ?? null);
+    if (multisigAccountProp !== undefined) {
+      setMultisigAccount(multisigAccountProp ?? null);
       return;
     }
-    getMultisigOrgAccount().then(setOrgAccount);
-  }, [orgAccountProp]);
+    getMultisigAccount().then(setMultisigAccount);
+  }, [multisigAccountProp]);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,7 +150,7 @@ export function SendTokenPage({ address, wallet, onBack, orgAccount: orgAccountP
         coords.longitude
       );
 
-      if (orgAccount) {
+      if (multisigAccount) {
         // ——— Multi-sig Signer 1: prepare → request-release → build Create & Finish → sign both → submit-first-signatures ———
         setStepMessage('Step 1: Prepared. Step 2: Requesting release…');
 
@@ -159,12 +159,12 @@ export function SendTokenPage({ address, wallet, onBack, orgAccount: orgAccountP
         try {
           const accountRes = await client.request({
             command: 'account_info',
-            account: orgAccount,
+            account: multisigAccount,
             ledger_index: 'validated',
           });
           const accResult = accountRes.result as { account_data?: { Sequence?: number }; error?: string };
           if (accResult.error === 'actNotFound') {
-            setError('Org account not found on ledger.');
+            setError('Multisig account not found on ledger.');
             return;
           }
           const nextSequence = accResult.account_data?.Sequence ?? 0;
@@ -173,7 +173,7 @@ export function SendTokenPage({ address, wallet, onBack, orgAccount: orgAccountP
             method: 'POST',
             headers,
             body: JSON.stringify({
-              owner: orgAccount,
+              owner: multisigAccount,
               offer_sequence: String(nextSequence),
               condition: prepareData.condition,
               digital_id: String(creds.digital_id),
@@ -201,7 +201,7 @@ export function SendTokenPage({ address, wallet, onBack, orgAccount: orgAccountP
           const destTag = destinationTag.trim();
           const createTx: Record<string, unknown> = {
             TransactionType: 'EscrowCreate',
-            Account: orgAccount,
+            Account: multisigAccount,
             Amount: drops,
             Destination: recipient.trim(),
             Condition: prepareData.condition,
@@ -214,16 +214,16 @@ export function SendTokenPage({ address, wallet, onBack, orgAccount: orgAccountP
 
           const finishTx: Record<string, unknown> = {
             TransactionType: 'EscrowFinish',
-            Account: orgAccount,
-            Owner: orgAccount,
+            Account: multisigAccount,
+            Owner: multisigAccount,
             OfferSequence: nextSequence,
             Condition: prepareData.condition,
             Fulfillment: requestReleaseData.fulfillment,
             Fee: MULTISIG_FEE_DROPS,
           };
 
-          const signedCreate = wallet.sign(createTx as Parameters<Wallet['sign']>[0], orgAccount);
-          const signedFinish = wallet.sign(finishTx as Parameters<Wallet['sign']>[0], orgAccount);
+          const signedCreate = wallet.sign(createTx as Parameters<Wallet['sign']>[0], multisigAccount);
+          const signedFinish = wallet.sign(finishTx as Parameters<Wallet['sign']>[0], multisigAccount);
           const escrowCreateTxJson = decode(signedCreate.tx_blob) as Record<string, unknown>;
           const escrowFinishTxJson = decode(signedFinish.tx_blob) as Record<string, unknown>;
           // Ensure plain JSON-serializable objects for the API
@@ -330,7 +330,7 @@ export function SendTokenPage({ address, wallet, onBack, orgAccount: orgAccountP
       setSubmitting(false);
       setStepMessage(null);
     }
-  }, [canSubmit, address, wallet, amount, recipient, destinationTag, orgAccount]);
+  }, [canSubmit, address, wallet, amount, recipient, destinationTag, multisigAccount]);
 
   return (
     <div className="flex flex-col gap-4 max-w-[360px] min-h-[400px] bg-gray-900 text-white p-4">

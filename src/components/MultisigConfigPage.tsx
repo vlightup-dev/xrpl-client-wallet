@@ -1,9 +1,14 @@
 import { useState, useCallback } from 'react';
 import { Client, Wallet } from 'xrpl';
-import { setMultisigOrgAccount } from '../multisigStorage';
+import { setMultisigAccount } from '../multisigStorage';
+import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
 const TESTNET_WS = 'wss://s.altnet.rippletest.net:51233';
+const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string)?.trim() ||
+  (import.meta.env.VITE_API_SERVER_URL as string)?.trim() ||
+  '';
 
 type MultisigMode = '2-of-2' | '2-of-3' | '3-of-3';
 
@@ -71,7 +76,39 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
       const signed = wallet.sign(filled);
       const result = await client.submitAndWait(signed.tx_blob);
       const txHash = (result.result as { hash?: string }).hash;
-      await setMultisigOrgAccount(address);
+      await setMultisigAccount(address);
+      const registerBody: Record<string, string> = {
+        signer1_wallet_address: signer2Trim,
+        signer2_wallet_address: signer3Trim,
+      };
+      if (needThirdSigner && signer4Trim) registerBody.signer3_wallet_address = signer4Trim;
+      if (API_BASE_URL) {
+        const creds = await getSbtCredentials();
+        if (creds?.access_token) {
+          const base = API_BASE_URL.replace(/\/$/, '');
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${creds.access_token}`,
+            ...(creds.api_key ? { 'X-API-KEY': creds.api_key } : {}),
+          };
+          let registerRes: Response;
+          try {
+            registerRes = await fetch(`${base}/api/v1/xrpl/escrow/register-multisig`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(registerBody),
+            });
+          } catch (networkErr) {
+            setError(networkErr instanceof Error ? networkErr.message : 'Register multisig: network error');
+            return;
+          }
+          if (!registerRes.ok) {
+            const errData = (await registerRes.json().catch(() => ({}))) as { error?: string };
+            setError(errData?.error ?? `Register multisig failed (${registerRes.status})`);
+            return;
+          }
+        }
+      }
       onSaved?.();
       setSuccess(`Multi-sig configured. Tx: ${txHash ?? '—'}. This wallet is now the multi-sig account.`);
       setSigner2('');

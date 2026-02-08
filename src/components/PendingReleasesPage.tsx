@@ -20,17 +20,17 @@ type PendingItem = {
 };
 
 type PendingReleasesPageProps = {
-  orgAccount: string;
   wallet: Wallet | null;
   onBack: () => void;
 };
 
-export function PendingReleasesPage({ orgAccount, wallet, onBack }: PendingReleasesPageProps) {
+export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps) {
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
+  const [needsLink, setNeedsLink] = useState(false);
 
   const fetchPending = useCallback(async () => {
     if (!API_BASE_URL) {
@@ -51,7 +51,8 @@ export function PendingReleasesPage({ orgAccount, wallet, onBack }: PendingRelea
       ...(creds.api_key ? { 'X-API-KEY': creds.api_key } : {}),
     };
     try {
-      const res = await fetch(`${base}/api/v1/xrpl/escrow/pending-releases?account=${encodeURIComponent(orgAccount)}`, { headers });
+      const url = `${base}/api/v1/xrpl/escrow/pending-releases`;
+      const res = await fetch(url, { headers });
       const data = (await res.json().catch(() => ({}))) as { pending?: PendingItem[]; error?: string };
       if (!res.ok) {
         const msg =
@@ -63,6 +64,7 @@ export function PendingReleasesPage({ orgAccount, wallet, onBack }: PendingRelea
         return;
       }
       setPending(data.pending ?? []);
+      setNeedsLink(data.error === 'no_wallet_linked');
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Request failed');
@@ -70,7 +72,7 @@ export function PendingReleasesPage({ orgAccount, wallet, onBack }: PendingRelea
     } finally {
       setLoading(false);
     }
-  }, [orgAccount]);
+  }, []);
 
   useEffect(() => {
     fetchPending();
@@ -119,7 +121,6 @@ export function PendingReleasesPage({ orgAccount, wallet, onBack }: PendingRelea
             timestamp,
             nonce,
             location_signature: locationSignature,
-            signer_address: wallet.address,
           }),
         });
         const bundleData = (await getBundleRes.json().catch(() => ({}))) as {
@@ -145,8 +146,14 @@ export function PendingReleasesPage({ orgAccount, wallet, onBack }: PendingRelea
         const finishWithoutSigners = { ...finishTx };
         delete (finishWithoutSigners as Record<string, unknown>).Signers;
 
-        const ourSignedCreate = wallet.sign(createWithoutSigners as Parameters<Wallet['sign']>[0], orgAccount);
-        const ourSignedFinish = wallet.sign(finishWithoutSigners as Parameters<Wallet['sign']>[0], orgAccount);
+        const item = pending.find((p) => p.pending_id === pendingId);
+        const orgForSign = item?.owner ?? '';
+        if (!orgForSign) {
+          setError('Could not determine org account for this pending release.');
+          return;
+        }
+        const ourSignedCreate = wallet.sign(createWithoutSigners as Parameters<Wallet['sign']>[0], orgForSign);
+        const ourSignedFinish = wallet.sign(finishWithoutSigners as Parameters<Wallet['sign']>[0], orgForSign);
         const ourCreateJson = decode(ourSignedCreate.tx_blob) as Record<string, unknown>;
         const ourFinishJson = decode(ourSignedFinish.tx_blob) as Record<string, unknown>;
 
@@ -190,7 +197,7 @@ export function PendingReleasesPage({ orgAccount, wallet, onBack }: PendingRelea
         setStepMessage(null);
       }
     },
-    [orgAccount, wallet, fetchPending]
+    [wallet, pending, fetchPending]
   );
 
   return (
@@ -209,8 +216,14 @@ export function PendingReleasesPage({ orgAccount, wallet, onBack }: PendingRelea
       </header>
 
       <p className="text-xs text-gray-400">
-        Escrows awaiting your signature (org: {orgAccount.slice(0, 8)}…)
+        Releases where your linked wallet is an awaiting signer.
       </p>
+
+      {needsLink && (
+        <p className="text-xs text-amber-400">
+          Register SBT with your XRPL wallet to see pending releases here.
+        </p>
+      )}
 
       {loading && <p className="text-sm text-gray-400">Loading…</p>}
       {error && <p className="text-xs text-red-400">{error}</p>}
