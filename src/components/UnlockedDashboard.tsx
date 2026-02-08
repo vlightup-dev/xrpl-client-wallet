@@ -196,24 +196,18 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
             <button
               type="button"
               onClick={onPendingReleases}
-              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors relative"
+              className="flex items-center gap-1 p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors relative text-xs"
               title={pendingCount > 0 ? `${pendingCount} pending release(s) to sign` : 'Pending releases'}
             >
-              <PendingIcon className="w-5 h-5" />
-              {orgAccount && pendingCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-gray-900">
-                  {pendingCount > 9 ? '9+' : pendingCount}
-                </span>
-              )}
-            </button>
-          )}
-          {onPendingReleases && (
-            <button
-              type="button"
-              onClick={onPendingReleases}
-              className="text-xs text-sky-400 hover:text-white transition-colors"
-            >
-              Pending
+              <span className="relative">
+                <PendingIcon className="w-5 h-5" />
+                {orgAccount && pendingCount > 0 && (
+                  <span className="absolute -top-0.5 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-gray-900">
+                    {pendingCount > 9 ? '9+' : pendingCount}
+                  </span>
+                )}
+              </span>
+              <span className="text-xs text-sky-400 ml-1">Pending</span>
             </button>
           )}
           <button
