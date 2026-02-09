@@ -25,6 +25,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
   const [signer4, setSigner4] = useState('');
   const [mode, setMode] = useState<MultisigMode>('2-of-2');
   const [submitting, setSubmitting] = useState(false);
+  const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -50,9 +51,11 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
     setSubmitting(true);
     setError(null);
     setSuccess(null);
+    setStepMessage('Step 1: Connecting to ledger…');
     const client = new Client(TESTNET_WS);
     try {
       await client.connect();
+      setStepMessage('Step 2: Submitting SignerListSet…');
       const entries: { SignerEntry: { Account: string; SignerWeight: number } }[] = [
         { SignerEntry: { Account: signer2Trim, SignerWeight: 1 } },
         { SignerEntry: { Account: signer3Trim, SignerWeight: 1 } },
@@ -60,12 +63,14 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
       if (needThirdSigner) {
         if (!signer4Trim) {
           setError(`For ${mode} add a third signer address.`);
+          setStepMessage(null);
           await client.disconnect();
           setSubmitting(false);
           return;
         }
         entries.push({ SignerEntry: { Account: signer4Trim, SignerWeight: 1 } });
       }
+      const ledgerIndexSignerList = await client.getLedgerIndex();
       const tx = {
         TransactionType: 'SignerListSet' as const,
         Account: address,
@@ -73,9 +78,23 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
         SignerEntries: entries,
       };
       const filled = await client.autofill(tx as Parameters<Client['autofill']>[0]);
+      (filled as Record<string, unknown>).LastLedgerSequence = ledgerIndexSignerList + 20;
       const signed = wallet.sign(filled);
       const result = await client.submitAndWait(signed.tx_blob);
       const txHash = (result.result as { hash?: string }).hash;
+      setStepMessage('Step 3: Disabling master key…');
+      // Disable master key so only multisig signers can authorize (SetFlag 4 = asfDisableMaster)
+      const ledgerIndex = await client.getLedgerIndex();
+      const disableMasterTx = {
+        TransactionType: 'AccountSet' as const,
+        Account: address,
+        SetFlag: 4,
+      };
+      const filledDisable = await client.autofill(disableMasterTx as Parameters<Client['autofill']>[0]);
+      (filledDisable as Record<string, unknown>).LastLedgerSequence = ledgerIndex + 20;
+      const signedDisable = wallet.sign(filledDisable);
+      await client.submitAndWait(signedDisable.tx_blob);
+      setStepMessage('Step 4: Registering with server…');
       await setMultisigAccount(address);
       const registerBody: Record<string, string> = {
         signer1_wallet_address: signer2Trim,
@@ -109,14 +128,35 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
           }
         }
       }
+      setStepMessage(null);
       onSaved?.();
-      setSuccess(`Multi-sig configured. Tx: ${txHash ?? '—'}. This wallet is now the multi-sig account.`);
+      setSuccess(
+        `Multi-sig configured. SignerListSet: ${txHash ?? '—'}. Master key disabled. This wallet is now the multi-sig account; use a signer wallet to initiate escrows.`
+      );
       setSigner2('');
       setSigner3('');
       setSigner4('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to set up multi-sig');
+      const msg = e instanceof Error ? e.message : 'Failed to set up multi-sig';
+      if (
+        msg.includes('tefMASTER_DISABLED') ||
+        msg.includes('LastLedgerSequence') ||
+        msg.includes('ledger sequence')
+      ) {
+        if (msg.includes('tefMASTER_DISABLED')) {
+          setError(
+            "This account's master key is already disabled. Multisig is already configured. Use a signer wallet to initiate escrows."
+          );
+        } else {
+          setError(
+            'Transaction expired (ledger closed). Please try again; the second step will now use a longer validity window.'
+          );
+        }
+      } else {
+        setError(msg);
+      }
     } finally {
+      setStepMessage(null);
       client.disconnect();
       setSubmitting(false);
     }
@@ -209,6 +249,11 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved }: Multisi
 
       {error && <p className="text-xs text-red-400">{error}</p>}
       {success && <p className="text-xs text-green-400">{success}</p>}
+      {submitting && stepMessage && (
+        <p className="text-xs text-sky-300" role="status">
+          {stepMessage}
+        </p>
+      )}
 
       <button
         type="button"

@@ -151,6 +151,12 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
       );
 
       if (multisigAccount) {
+        if (address.trim().toLowerCase() === multisigAccount.trim().toLowerCase()) {
+          setError(
+            'The multisig account (owner) cannot initiate escrow. Use one of the signer wallets. The master key on the multisig account should be disabled after setup.'
+          );
+          return;
+        }
         // ——— Multi-sig Signer 1: prepare → request-release → build Create & Finish → sign both → submit-first-signatures ———
         setStepMessage('Step 1: Prepared. Step 2: Requesting release…');
 
