@@ -21,10 +21,13 @@ function amountToDrops(amountXrp: string): string {
   return Math.round(n * XRP_TO_DROPS).toString();
 }
 
-/** Fee in drops: 2 signers -> 60, 3 signers -> 90 (avoids tefFEE_INSUF). */
+/** Fee for EscrowCreate (multisig only): 2 signers -> 60, 3 signers -> 90. */
 function getMultisigFeeDrops(signerCount: 2 | 3 | null): string {
   return signerCount === 3 ? '90' : '60';
 }
+
+/** EscrowFinish with Fulfillment has a much higher minimum: 10 × (33 + fulfillment_size/16). For 32-byte preimage = 350; use 400 for safety. */
+const ESCROW_FINISH_FEE_DROPS = '400';
 
 type SendTokenPageProps = {
   address: string;
@@ -236,7 +239,7 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
             Condition: prepareData.condition,
             Fulfillment: requestReleaseData.fulfillment,
             Sequence: nextSequence + 1,
-            Fee: multisigFeeDrops,
+            Fee: ESCROW_FINISH_FEE_DROPS,
           };
 
           // Second param is the signer's address (for multisign: Signer.Account + encoding). Must be signer1 so server gets signer_1_address = signer1 and awaiting = [signer2].
