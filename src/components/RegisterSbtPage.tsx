@@ -23,35 +23,26 @@ export function RegisterSbtPage({ address, onBack }: RegisterSbtPageProps) {
   const getLocation = async (): Promise<{ latitude: number; longitude: number } | null> => {
     setLocationStatus('getting');
     setError(null);
-    if (!navigator.geolocation) {
-      setError('Geolocation is not supported by this browser.');
-      setLocationStatus('idle');
-      return null;
-    }
     try {
-      // TODO: switch to fetching the location from the GNSS API
-      // const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-      //   navigator.geolocation.getCurrentPosition(resolve, reject, {
-      //     timeout: 25000,
-      //     maximumAge: 300000,
-      //     enableHighAccuracy: false,
-      //   });
-      // });
+      // Fetch location from GNSS API
+      const response = await fetch('http://localhost:8000/api/gnss');
+      if (!response.ok) {
+        throw new Error(`GNSS API error: ${response.status}`);
+      }
+      const data = await response.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('No location data available from GNSS API');
+      }
+      const first = data[0];
       const result = {
-        latitude: 35.6895,
-        longitude: 139.6917,
+        latitude: first.lat,
+        longitude: first.lon,
       };
       setCoords(result);
       setLocationStatus('ok');
       return result;
     } catch (err) {
-      const code = (err as GeolocationPositionError).code;
-      const msg =
-        code === 1
-          ? 'Location denied. Allow location for this extension in Chrome (extension puzzle icon → TRUSTAUTHY Wallet → Allow location).'
-          : code === 3
-            ? 'Location timed out. Try again.'
-            : (err as Error).message || 'Could not get location.';
+      const msg = err instanceof Error ? err.message : 'Could not get location from GNSS API.';
       setError(msg);
       setLocationStatus('idle');
       return null;
