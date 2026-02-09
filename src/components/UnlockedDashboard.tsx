@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Client, Wallet } from 'xrpl';
+import { fetchWithAuth } from '../authRefresh';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { PendingIcon, SendIcon } from './icons';
 
@@ -46,13 +47,8 @@ export function UnlockedDashboard({ address, wallet, onLogout, onRegisterSbt, on
       return;
     }
     const base = API_BASE_URL.replace(/\/$/, '');
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${creds.access_token}`,
-      ...(creds.api_key ? { 'X-API-KEY': creds.api_key } : {}),
-    };
     try {
-      const res = await fetch(`${base}/api/v1/xrpl/escrow/pending-releases`, { headers });
+      const res = await fetchWithAuth(base, '/api/v1/xrpl/escrow/pending-releases', { method: 'GET' });
       if (!res.ok) return;
       const data = (await res.json().catch(() => ({}))) as { pending?: unknown[] };
       setPendingCount(Array.isArray(data.pending) ? data.pending.length : 0);

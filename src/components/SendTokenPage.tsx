@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Client, decode, Wallet } from 'xrpl';
+import { fetchWithAuth } from '../authRefresh';
 import { computeLocationSignature } from '../geohashLocationHash';
 import { getMultisigAccount } from '../multisigStorage';
 import { getSbtCredentials } from '../trustauthyStorage';
@@ -105,16 +106,9 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
         return;
       }
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${creds.access_token}`,
-        ...(creds.api_key ? { 'X-API-KEY': creds.api_key } : {}),
-      };
-
       // 1) Prepare escrow: get condition + params (server stores fulfillment; client will create tx)
-      const prepareRes = await fetch(`${base}/api/v1/xrpl/escrow/prepare`, {
+      const prepareRes = await fetchWithAuth(base, '/api/v1/xrpl/escrow/prepare', {
         method: 'POST',
-        headers,
         body: JSON.stringify({
           destination: recipient.trim(),
           amount_drops: drops,
@@ -186,9 +180,8 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
           }
           const nextSequence = accResult.account_data?.Sequence ?? 0;
 
-          const requestReleaseRes = await fetch(`${base}/api/v1/xrpl/escrow/request-release`, {
+          const requestReleaseRes = await fetchWithAuth(base, '/api/v1/xrpl/escrow/request-release', {
             method: 'POST',
-            headers,
             body: JSON.stringify({
               owner: multisigAccount,
               offer_sequence: String(nextSequence),
@@ -251,9 +244,8 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
 
           setStepMessage('Step 3: Submitting first signatures…');
 
-          const submitFirstRes = await fetch(`${base}/api/v1/xrpl/escrow/submit-first-signatures`, {
+          const submitFirstRes = await fetchWithAuth(base, '/api/v1/xrpl/escrow/submit-first-signatures', {
             method: 'POST',
-            headers,
             body: JSON.stringify({
               condition: prepareData.condition,
               escrow_create_tx_json: createPayload,
@@ -313,9 +305,8 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
 
         setStepMessage('Step 2: Created. Step 3: Releasing escrow…');
 
-        const finishRes = await fetch(`${base}/api/v1/xrpl/escrow/finish`, {
+        const finishRes = await fetchWithAuth(base, '/api/v1/xrpl/escrow/finish', {
           method: 'POST',
-          headers,
           body: JSON.stringify({
             owner: address,
             offer_sequence: String(offerSequence),

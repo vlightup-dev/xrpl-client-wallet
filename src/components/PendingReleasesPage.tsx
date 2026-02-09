@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { decode, multisign, Wallet } from 'xrpl';
 import type { Transaction } from 'xrpl';
 import { computeLocationSignature } from '../geohashLocationHash';
+import { fetchWithAuth } from '../authRefresh';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
@@ -45,19 +46,13 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
       return;
     }
     const base = API_BASE_URL.replace(/\/$/, '');
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${creds.access_token}`,
-      ...(creds.api_key ? { 'X-API-KEY': creds.api_key } : {}),
-    };
     try {
-      const url = `${base}/api/v1/xrpl/escrow/pending-releases`;
-      const res = await fetch(url, { headers });
+      const res = await fetchWithAuth(base, '/api/v1/xrpl/escrow/pending-releases', { method: 'GET' });
       const data = (await res.json().catch(() => ({}))) as { pending?: PendingItem[]; error?: string };
       if (!res.ok) {
         const msg =
           res.status === 401
-            ? (data.error || 'Sign-in required or session expired. Register SBT and sign in again to view pending releases.')
+            ? (data.error || 'Sign-in required or session expired. Register SBT and sign in again, then tap Refresh list.')
             : (data.error || `Failed to load: ${res.status}`);
         setError(msg);
         setPending([]);
@@ -94,12 +89,6 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
       setStepMessage('Fetching the escrow transaction…');
 
       const base = API_BASE_URL.replace(/\/$/, '');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${creds.access_token}`,
-        ...(creds.api_key ? { 'X-API-KEY': creds.api_key } : {}),
-      };
-
       const coords = { latitude: 35.6895, longitude: 139.6917 };
       const timestamp = Math.floor(Date.now() / 1000);
       const nonce = crypto.randomUUID?.() ?? `${timestamp}-${Math.random().toString(36).slice(2)}`;
@@ -111,9 +100,8 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
       );
 
       try {
-        const getBundleRes = await fetch(`${base}/api/v1/xrpl/escrow/get-bundle-for-signing`, {
+        const getBundleRes = await fetchWithAuth(base, '/api/v1/xrpl/escrow/get-bundle-for-signing', {
           method: 'POST',
-          headers,
           body: JSON.stringify({
             pending_id: pendingId,
             condition: pendingId,
@@ -147,13 +135,14 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
         delete (finishWithoutSigners as Record<string, unknown>).Signers;
 
         const item = pending.find((p) => p.pending_id === pendingId);
-        const orgForSign = item?.owner ?? '';
-        if (!orgForSign) {
+        if (!item?.owner) {
           setError('Could not determine org account for this pending release.');
           return;
         }
-        const ourSignedCreate = wallet.sign(createWithoutSigners as Parameters<Wallet['sign']>[0], orgForSign);
-        const ourSignedFinish = wallet.sign(finishWithoutSigners as Parameters<Wallet['sign']>[0], orgForSign);
+        // Sign as Signer 2: pass this wallet's address (the account we're adding a signature for)
+        const signerAddress = wallet.classicAddress;
+        const ourSignedCreate = wallet.sign(createWithoutSigners as Parameters<Wallet['sign']>[0], signerAddress);
+        const ourSignedFinish = wallet.sign(finishWithoutSigners as Parameters<Wallet['sign']>[0], signerAddress);
         const ourCreateJson = decode(ourSignedCreate.tx_blob) as Record<string, unknown>;
         const ourFinishJson = decode(ourSignedFinish.tx_blob) as Record<string, unknown>;
 
@@ -172,9 +161,8 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
           coords.latitude,
           coords.longitude
         );
-        const completeRes = await fetch(`${base}/api/v1/xrpl/escrow/complete-release`, {
+        const completeRes = await fetchWithAuth(base, '/api/v1/xrpl/escrow/complete-release', {
           method: 'POST',
-          headers,
           body: JSON.stringify({
             pending_id: pendingId,
             condition: pendingId,

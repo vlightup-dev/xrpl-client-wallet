@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Client, Wallet } from 'xrpl';
+import { fetchWithAuth } from '../authRefresh';
 import { setMultisigAccount, setMultisigSigner1 } from '../multisigStorage';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
@@ -115,16 +116,10 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
         const creds = await getSbtCredentials();
         if (creds?.access_token) {
           const base = API_BASE_URL.replace(/\/$/, '');
-          const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${creds.access_token}`,
-            ...(creds.api_key ? { 'X-API-KEY': creds.api_key } : {}),
-          };
           let registerRes: Response;
           try {
-            registerRes = await fetch(`${base}/api/v1/xrpl/escrow/register-multisig`, {
+            registerRes = await fetchWithAuth(base, '/api/v1/xrpl/escrow/register-multisig', {
               method: 'POST',
-              headers,
               body: JSON.stringify(registerBody),
             });
           } catch (networkErr) {
