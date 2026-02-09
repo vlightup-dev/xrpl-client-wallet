@@ -4,6 +4,7 @@
  */
 
 const MULTISIG_ACCOUNT_KEY = 'multisig_org_account';
+const MULTISIG_SIGNER_COUNT_KEY = 'multisig_signer_count'; // 2 or 3 (for fee: 2 signers vs 3 signers)
 const SIGNER1_SALT_KEY = 'multisig_signer1_salt';
 const SIGNER1_ENCRYPTED_KEYS_KEY = 'multisig_signer1_encrypted_keys';
 
@@ -56,10 +57,27 @@ export async function getMultisigAccount(): Promise<string | null> {
 
 export async function setMultisigAccount(account: string | null): Promise<void> {
   if (account === null || (account && !account.trim())) {
-    await chrome.storage.local.remove([MULTISIG_ACCOUNT_KEY]);
+    await chrome.storage.local.remove([MULTISIG_ACCOUNT_KEY, MULTISIG_SIGNER_COUNT_KEY]);
     return;
   }
   await chrome.storage.local.set({ [MULTISIG_ACCOUNT_KEY]: account.trim() });
+}
+
+/** Signer count in the multisig list: 2 for 2-of-2, 3 for 2-of-3 or 3-of-3. Used for fee (e.g. (N+1)*30 drops). */
+export async function getMultisigSignerCount(): Promise<2 | 3 | null> {
+  const result = await chrome.storage.local.get([MULTISIG_SIGNER_COUNT_KEY]);
+  const v = result[MULTISIG_SIGNER_COUNT_KEY];
+  if (v === 2 || v === 3) return v;
+  if (typeof v === 'number' && v >= 2 && v <= 3) return v as 2 | 3;
+  return null;
+}
+
+export async function setMultisigSignerCount(count: 2 | 3): Promise<void> {
+  await chrome.storage.local.set({ [MULTISIG_SIGNER_COUNT_KEY]: count });
+}
+
+export async function clearMultisigSignerCount(): Promise<void> {
+  await chrome.storage.local.remove([MULTISIG_SIGNER_COUNT_KEY]);
 }
 
 export async function isMultisigMode(): Promise<boolean> {

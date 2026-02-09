@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { Client, decode, Wallet } from 'xrpl';
 import { fetchWithAuth } from '../authRefresh';
 import { computeLocationSignature } from '../geohashLocationHash';
-import { getMultisigAccount } from '../multisigStorage';
+import { getMultisigAccount, getMultisigSignerCount } from '../multisigStorage';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
@@ -21,7 +21,10 @@ function amountToDrops(amountXrp: string): string {
   return Math.round(n * XRP_TO_DROPS).toString();
 }
 
-const MULTISIG_FEE_DROPS = '30'; // 2 signers: (N+1)*10 drops
+/** Fee in drops: 2 signers -> 60, 3 signers -> 90 (avoids tefFEE_INSUF). */
+function getMultisigFeeDrops(signerCount: 2 | 3 | null): string {
+  return signerCount === 3 ? '90' : '60';
+}
 
 type SendTokenPageProps = {
   address: string;
@@ -165,6 +168,9 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
         // ——— Multi-sig: signer1 (saved in config) signs after request-release → submit-first-signatures; awaiting signer = signer2 only ———
         setStepMessage('Step 1: Prepared. Step 2: Requesting release…');
 
+        const signerCount = await getMultisigSignerCount();
+        const multisigFeeDrops = getMultisigFeeDrops(signerCount);
+
         const client = new Client(TESTNET_WS);
         await client.connect();
         try {
@@ -217,7 +223,7 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
             Condition: prepareData.condition,
             CancelAfter: prepareData.cancel_after,
             Sequence: nextSequence,
-            Fee: MULTISIG_FEE_DROPS,
+            Fee: multisigFeeDrops,
           };
           if (prepareData.finish_after != null) (createTx as Record<string, unknown>).FinishAfter = prepareData.finish_after;
           if (destTag && !Number.isNaN(Number(destTag))) (createTx as Record<string, unknown>).DestinationTag = Number(destTag);
@@ -230,7 +236,7 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
             Condition: prepareData.condition,
             Fulfillment: requestReleaseData.fulfillment,
             Sequence: nextSequence + 1,
-            Fee: MULTISIG_FEE_DROPS,
+            Fee: multisigFeeDrops,
           };
 
           // Second param is the signer's address (for multisign: Signer.Account + encoding). Must be signer1 so server gets signer_1_address = signer1 and awaiting = [signer2].

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Client, Wallet } from 'xrpl';
 import { fetchWithAuth } from '../authRefresh';
-import { setMultisigAccount, setMultisigSigner1 } from '../multisigStorage';
+import { setMultisigAccount, setMultisigSigner1, setMultisigSignerCount } from '../multisigStorage';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
@@ -134,6 +134,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
         }
       }
       setStepMessage(null);
+      await setMultisigSignerCount(mode === '2-of-2' ? 2 : 3);
       onSaved?.();
       setSuccess(
         `Multi-sig configured. SignerListSet: ${txHash ?? '—'}. Master key disabled. This wallet is now the multi-sig account; use a signer wallet to initiate escrows.`
