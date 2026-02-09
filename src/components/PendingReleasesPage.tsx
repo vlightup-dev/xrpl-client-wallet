@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
-import { decode, multisign, Wallet } from 'xrpl';
+import { Client, decode, multisign, Wallet } from 'xrpl';
 import type { Transaction } from 'xrpl';
 import { computeLocationSignature } from '../geohashLocationHash';
 import { fetchWithAuth } from '../authRefresh';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
+
+const TESTNET_WS = 'wss://s.altnet.rippletest.net:51233';
 
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string)?.trim() ||
@@ -127,6 +129,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
           return;
         }
 
+        // Both EscrowCreate and EscrowFinish must be multi-signed by signer1 and signer2 (2-of-2).
         setStepMessage('Signing escrow…');
 
         const createWithoutSigners = { ...createTx };

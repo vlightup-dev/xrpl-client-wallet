@@ -229,6 +229,7 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
             OfferSequence: nextSequence,
             Condition: prepareData.condition,
             Fulfillment: requestReleaseData.fulfillment,
+            Sequence: nextSequence + 1,
             Fee: MULTISIG_FEE_DROPS,
           };
 
