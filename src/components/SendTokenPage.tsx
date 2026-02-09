@@ -154,18 +154,21 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
 
       if (multisigAccount) {
         const isMainAccount = address.trim().toLowerCase() === multisigAccount.trim().toLowerCase();
-        if (isMainAccount && !signerWallet) {
+        // Only the multisig account can initiate; first signature must be from signer1 (created in multisig config).
+        // Signer2 completes the escrow via Pending releases.
+        if (!isMainAccount) {
           setError(
-            'The multisig account cannot sign. Go to Configure multi-sig, use "Create signer wallet" for the first signer, save the seed (shown once), and confirm "I\'ve saved it" so this session can sign—or unlock with a wallet that has that signer seed.'
+            'Only the multisig account can initiate a transfer (using signer 1). To complete an escrow as signer 2, go to Pending releases.'
           );
           return;
         }
-        const walletToSign = isMainAccount ? signerWallet! : wallet;
-        if (!walletToSign) {
-          setError('Wallet not available for signing.');
+        if (!signerWallet) {
+          setError(
+            'The multisig account cannot sign. Go to Configure multi-sig, use "Create signer wallet" for signer 1, then initiate transfers here. Signer 2 completes from Pending releases.'
+          );
           return;
         }
-        // ——— Multi-sig Signer 1: prepare → request-release → build Create & Finish → sign both → submit-first-signatures ———
+        // ——— Multi-sig: signer1 (saved in config) signs after request-release → submit-first-signatures; awaiting signer = signer2 only ———
         setStepMessage('Step 1: Prepared. Step 2: Requesting release…');
 
         const client = new Client(TESTNET_WS);
@@ -236,8 +239,10 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
             Fee: MULTISIG_FEE_DROPS,
           };
 
-          const signedCreate = walletToSign.sign(createTx as Parameters<Wallet['sign']>[0], multisigAccount);
-          const signedFinish = walletToSign.sign(finishTx as Parameters<Wallet['sign']>[0], multisigAccount);
+          // Second param is the signer's address (for multisign: Signer.Account + encoding). Must be signer1 so server gets signer_1_address = signer1 and awaiting = [signer2].
+          const signer1Address = signerWallet.address;
+          const signedCreate = signerWallet.sign(createTx as Parameters<Wallet['sign']>[0], signer1Address);
+          const signedFinish = signerWallet.sign(finishTx as Parameters<Wallet['sign']>[0], signer1Address);
           const escrowCreateTxJson = decode(signedCreate.tx_blob) as Record<string, unknown>;
           const escrowFinishTxJson = decode(signedFinish.tx_blob) as Record<string, unknown>;
           // Ensure plain JSON-serializable objects for the API

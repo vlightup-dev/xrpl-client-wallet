@@ -263,7 +263,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
 
       <section className="flex flex-col gap-2">
         <label className="text-xs font-medium text-gray-400" htmlFor="ms-signer2">
-          Signer 2 address
+          Signer 1 address
         </label>
         <div className="flex gap-2">
           <input
@@ -356,7 +356,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
 
       <section className="flex flex-col gap-2">
         <label className="text-xs font-medium text-gray-400" htmlFor="ms-signer3">
-          Signer 3 address {needThirdSigner ? '(required for 2-of-3 and 3-of-3)' : '(required for 2-of-2)'}
+          Signer 2 address {needThirdSigner ? '(required for 2-of-3 and 3-of-3)' : '(required for 2-of-2)'}
         </label>
         <input
           id="ms-signer3"
@@ -371,7 +371,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       {needThirdSigner && (
         <section className="flex flex-col gap-2">
           <label className="text-xs font-medium text-gray-400" htmlFor="ms-signer4">
-            Signer 4 address (required for 2-of-3 and 3-of-3)
+            Signer 3 address (required for 2-of-3 and 3-of-3)
           </label>
           <input
             id="ms-signer4"
