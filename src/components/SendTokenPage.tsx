@@ -27,9 +27,11 @@ type SendTokenPageProps = {
   wallet: Wallet | null;
   onBack: () => void;
   multisigAccount?: string | null;
+  /** First signer wallet when main account is multisig (saved in Multisig config). Used to sign escrows. */
+  signerWallet?: Wallet | null;
 };
 
-export function SendTokenPage({ address, wallet, onBack, multisigAccount: multisigAccountProp }: SendTokenPageProps) {
+export function SendTokenPage({ address, wallet, onBack, multisigAccount: multisigAccountProp, signerWallet }: SendTokenPageProps) {
   const [balanceXrp, setBalanceXrp] = useState<string>('0');
   const [multisigAccount, setMultisigAccount] = useState<string | null>(null);
   const [recipient, setRecipient] = useState('');
@@ -151,10 +153,16 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
       );
 
       if (multisigAccount) {
-        if (address.trim().toLowerCase() === multisigAccount.trim().toLowerCase()) {
+        const isMainAccount = address.trim().toLowerCase() === multisigAccount.trim().toLowerCase();
+        if (isMainAccount && !signerWallet) {
           setError(
-            'The multisig account (owner) cannot initiate escrow. Use one of the signer wallets. The master key on the multisig account should be disabled after setup.'
+            'The multisig account cannot sign. Go to Configure multi-sig, use "Create signer wallet" for the first signer, save the seed (shown once), and confirm "I\'ve saved it" so this session can sign—or unlock with a wallet that has that signer seed.'
           );
+          return;
+        }
+        const walletToSign = isMainAccount ? signerWallet! : wallet;
+        if (!walletToSign) {
+          setError('Wallet not available for signing.');
           return;
         }
         // ——— Multi-sig Signer 1: prepare → request-release → build Create & Finish → sign both → submit-first-signatures ———
@@ -228,8 +236,8 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
             Fee: MULTISIG_FEE_DROPS,
           };
 
-          const signedCreate = wallet.sign(createTx as Parameters<Wallet['sign']>[0], multisigAccount);
-          const signedFinish = wallet.sign(finishTx as Parameters<Wallet['sign']>[0], multisigAccount);
+          const signedCreate = walletToSign.sign(createTx as Parameters<Wallet['sign']>[0], multisigAccount);
+          const signedFinish = walletToSign.sign(finishTx as Parameters<Wallet['sign']>[0], multisigAccount);
           const escrowCreateTxJson = decode(signedCreate.tx_blob) as Record<string, unknown>;
           const escrowFinishTxJson = decode(signedFinish.tx_blob) as Record<string, unknown>;
           // Ensure plain JSON-serializable objects for the API
@@ -336,7 +344,7 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
       setSubmitting(false);
       setStepMessage(null);
     }
-  }, [canSubmit, address, wallet, amount, recipient, destinationTag, multisigAccount]);
+  }, [canSubmit, address, wallet, signerWallet, amount, recipient, destinationTag, multisigAccount]);
 
   return (
     <div className="flex flex-col gap-4 max-w-[360px] min-h-[400px] bg-gray-900 text-white p-4">

@@ -1,10 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Wallet } from 'xrpl';
-import { getMultisigAccount } from './multisigStorage';
+import {
+  getMultisigAccount,
+  getMultisigSigner1Credentials,
+  setMultisigAccount as persistMultisigAccount,
+  clearMultisigSigner1,
+} from './multisigStorage';
 import {
   getWalletExists,
   setWalletCreated,
-  getDecryptedSeed,
+  getDecryptedCredentials,
   clearWallet,
 } from './walletStorage';
 import {
@@ -46,6 +51,8 @@ export default function App() {
   const [address, setAddress] = useState<string | null>(null);
   const [wallet, setWallet] = useState<InstanceType<typeof Wallet> | null>(null);
   const [multisigAccount, setMultisigAccount] = useState<string | null>(null);
+  /** First signer wallet for escrow when main account is multisig (decrypted on unlock if stored). */
+  const [signerWallet, setSignerWallet] = useState<InstanceType<typeof Wallet> | null>(null);
 
   // Temporary seed storage for backup display (cleared after user confirms backup)
   const [tempSeed, setTempSeed] = useState<string | null>(null);
@@ -85,7 +92,7 @@ export default function App() {
     setCreating(true);
     try {
       const newWallet = Wallet.generate();
-      await setWalletCreated(password, newWallet.seed!, newWallet.address);
+      await setWalletCreated(password, newWallet.publicKey, newWallet.privateKey, newWallet.address);
       setWalletExists(true);
       setAddress(newWallet.address);
       setTempSeed(newWallet.seed!);
@@ -124,14 +131,18 @@ export default function App() {
     setUnlockError(null);
     setUnlocking(true);
     try {
-      const seed = await getDecryptedSeed(unlockPassword);
-      if (!seed) {
+      const creds = await getDecryptedCredentials(unlockPassword);
+      if (!creds) {
         setUnlockError('Incorrect password');
         return;
       }
-      const w = Wallet.fromSeed(seed);
+      const w = new Wallet(creds.publicKey, creds.privateKey);
       setWallet(w);
       setAddress(w.address);
+      const signer1Creds = await getMultisigSigner1Credentials(unlockPassword);
+      setSignerWallet(
+        signer1Creds ? new Wallet(signer1Creds.publicKey, signer1Creds.privateKey) : null
+      );
       setUnlockPassword('');
       setView('unlocked');
     } catch {
@@ -149,9 +160,13 @@ export default function App() {
     )
       return;
     await clearWallet();
+    await persistMultisigAccount(null);
+    await clearMultisigSigner1();
     setWalletExists(false);
     setAddress(null);
     setWallet(null);
+    setSignerWallet(null);
+    setMultisigAccount(null);
     setUnlockPassword('');
     setUnlockError(null);
     setView('home');
@@ -161,6 +176,7 @@ export default function App() {
     setView('home');
     setAddress(null);
     setWallet(null);
+    setSignerWallet(null);
   }, []);
 
   const onImportWallet = useCallback(() => {
@@ -246,6 +262,7 @@ export default function App() {
         wallet={wallet}
         onBack={() => setView('unlocked')}
         multisigAccount={multisigAccount}
+        signerWallet={signerWallet}
       />
     );
   }
@@ -266,6 +283,7 @@ export default function App() {
         wallet={wallet}
         onBack={() => setView('unlocked')}
         onSaved={() => getMultisigAccount().then(setMultisigAccount)}
+        onSigner1Saved={setSignerWallet}
       />
     );
   }
