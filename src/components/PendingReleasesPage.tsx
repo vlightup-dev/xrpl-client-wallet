@@ -406,7 +406,9 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
         </p>
       )}
       {completeSuccess && (
-        <p className="text-xs text-green-400 whitespace-pre-line">{completeSuccess}</p>
+        <p className="text-xs text-green-400 whitespace-pre-line break-all max-w-full overflow-hidden">
+          {completeSuccess}
+        </p>
       )}
 
       {!loading && pending.length === 0 && !error && (

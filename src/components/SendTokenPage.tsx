@@ -533,7 +533,9 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
           </p>
         )}
         {success && (
-          <p className="text-xs text-green-400 whitespace-pre-line">{success}</p>
+          <p className="text-xs text-green-400 whitespace-pre-line break-all max-w-full overflow-hidden">
+            {success}
+          </p>
         )}
 
         <div className="flex gap-2 mt-auto">
@@ -623,7 +625,9 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
         </p>
       )}
       {success && (
-        <p className="text-xs text-green-400 whitespace-pre-line">{success}</p>
+        <p className="text-xs text-green-400 whitespace-pre-line break-all max-w-full overflow-hidden">
+          {success}
+        </p>
       )}
 
       <button
