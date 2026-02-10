@@ -4,6 +4,7 @@ export { HomeNoWallet } from './HomeNoWallet';
 export { HomeUnlock } from './HomeUnlock';
 export { CreatePassword } from './CreatePassword';
 export { BackupSeed } from './BackupSeed';
+export { GetFaucetPage } from './GetFaucetPage';
 export { UnlockedDashboard } from './UnlockedDashboard';
 export { RegisterSbtPage } from './RegisterSbtPage';
 export { SendTokenPage } from './SendTokenPage';

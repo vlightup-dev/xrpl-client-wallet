@@ -9,9 +9,11 @@ const API_BASE_URL =
 type RegisterSbtPageProps = {
   address: string;
   onBack: () => void;
+  /** Called after SBT is successfully registered; use to navigate to dashboard. */
+  onSuccess?: () => void;
 };
 
-export function RegisterSbtPage({ address, onBack }: RegisterSbtPageProps) {
+export function RegisterSbtPage({ address, onBack, onSuccess }: RegisterSbtPageProps) {
   const [nickname, setNickname] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -117,15 +119,17 @@ export function RegisterSbtPage({ address, onBack }: RegisterSbtPageProps) {
           api_key: apiKey.trim(),
         });
         setSuccess('SBT registered. Credentials saved on this device.');
+        onSuccess?.();
       } else {
         setSuccess('SBT registered successfully.');
+        onSuccess?.();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Request failed.');
     } finally {
       setSubmitting(false);
     }
-  }, [nickname, apiKey, address, coords]);
+  }, [nickname, apiKey, address, coords, onSuccess]);
 
   return (
     <div className="flex flex-col gap-4 max-w-[360px] min-h-[400px] bg-gray-900 text-white p-4">

@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import { decode, multisign, Wallet } from 'xrpl';
 import type { Transaction } from 'xrpl';
-import { computeLocationSignature } from '../geohashLocationHash';
+import { getCoords } from '../coords';
 import { fetchWithAuth } from '../authRefresh';
+import { computeLocationSignature } from '../geohashLocationHash';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
@@ -48,6 +49,8 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
   /** When set, show transaction detail view before signing. */
   const [reviewBundle, setReviewBundle] = useState<ReviewBundle | null>(null);
   const [fetchingBundle, setFetchingBundle] = useState<string | null>(null);
+  /** Success message with EscrowCreate and EscrowFinish hashes after completing a release. */
+  const [completeSuccess, setCompleteSuccess] = useState<string | null>(null);
 
   const fetchPending = useCallback(async () => {
     if (!API_BASE_URL) {
@@ -92,6 +95,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
   /** Fetch bundle and show detail view (EscrowCreate + EscrowFinish) before signing. */
   const openDetailView = useCallback(
     async (pendingId: string) => {
+      setCompleteSuccess(null);
       if (!API_BASE_URL) {
         setError('API base URL is not configured.');
         return;
@@ -106,7 +110,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
       setFetchingBundle(pendingId);
       setError(null);
       const base = API_BASE_URL.replace(/\/$/, '');
-      const coords = { latitude: 35.6895, longitude: 139.6917 };
+      const coords = await getCoords();
       const timestamp = Math.floor(Date.now() / 1000);
       const nonce = crypto.randomUUID?.() ?? `${timestamp}-${Math.random().toString(36).slice(2)}`;
       const locationSignature = await computeLocationSignature(
@@ -167,7 +171,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
       setError(null);
 
       const base = API_BASE_URL.replace(/\/$/, '');
-      const coords = { latitude: 35.6895, longitude: 139.6917 };
+      const coords = await getCoords();
 
       let createTx: Record<string, unknown>;
       let finishTx: Record<string, unknown>;
@@ -273,6 +277,11 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
           return;
         }
         setStepMessage('Release complete.');
+        const createHash = completeData.tx_hash_create ?? '—';
+        const finishHash = completeData.tx_hash_finish ?? '—';
+        setCompleteSuccess(
+          `Release complete.\nEscrowCreate: ${createHash}\nEscrowFinish: ${finishHash}`
+        );
         setReviewBundle(null);
         await fetchPending();
       } catch (e) {
@@ -366,7 +375,10 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
       <header className="flex items-center justify-between pb-2 border-b border-gray-700">
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => {
+            setCompleteSuccess(null);
+            onBack();
+          }}
           className="p-1 rounded text-gray-400 hover:text-white transition-colors"
           aria-label="Back"
         >
@@ -391,6 +403,11 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
       {stepMessage && (
         <p className="text-xs text-sky-300 whitespace-pre-line" aria-live="polite">
           {stepMessage}
+        </p>
+      )}
+      {completeSuccess && (
+        <p className="text-xs text-green-400 whitespace-pre-line break-all max-w-full overflow-hidden">
+          {completeSuccess}
         </p>
       )}
 
