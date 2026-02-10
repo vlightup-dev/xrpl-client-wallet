@@ -17,6 +17,7 @@ import {
   HomeUnlock,
   CreatePassword,
   BackupSeed,
+  GetFaucetPage,
   UnlockedDashboard,
   RegisterSbtPage,
   SendTokenPage,
@@ -26,7 +27,7 @@ import {
 
 const MIN_PASSWORD_LENGTH = 8;
 
-type View = 'home' | 'create-password' | 'backup-seed' | 'unlocked' | 'register-sbt' | 'send-token' | 'pending-releases' | 'multisig-config';
+type View = 'home' | 'create-password' | 'backup-seed' | 'get-faucet' | 'unlocked' | 'register-sbt' | 'send-token' | 'pending-releases' | 'multisig-config';
 
 export default function App() {
   const [view, setView] = useState<View>('home');
@@ -117,7 +118,7 @@ export default function App() {
       setAddress(w.address);
     }
     setTempSeed(null); // Clear seed from memory after user confirms backup
-    setView('unlocked');
+    setView('get-faucet');
   }, [tempSeed]);
 
   const handleCreateBack = useCallback(() => {
@@ -246,11 +247,22 @@ export default function App() {
     );
   }
 
+  if (view === 'get-faucet' && address) {
+    return (
+      <GetFaucetPage
+        address={address}
+        wallet={wallet}
+        onContinue={() => setView('register-sbt')}
+      />
+    );
+  }
+
   if (view === 'register-sbt' && address) {
     return (
       <RegisterSbtPage
         address={address}
         onBack={() => setView('unlocked')}
+        onSuccess={() => setView('unlocked')}
       />
     );
   }
