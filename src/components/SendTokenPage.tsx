@@ -21,8 +21,7 @@ function amountToDrops(amountXrp: string): string {
   return Math.round(n * XRP_TO_DROPS).toString();
 }
 
-// const DEFAULT_COORDS = { latitude: 35.6895, longitude: 139.6917 };
-const DEFAULT_COORDS = { latitude: 55.751244, longitude: 37.618423 }; // Moscow
+const DEFAULT_COORDS = { latitude: 35.6895, longitude: 139.6917 };
 
 /** Fetch latitude/longitude asynchronously; falls back to DEFAULT_COORDS on error or denial. */
 function getCoords(): Promise<{ latitude: number; longitude: number }> {
@@ -270,7 +269,7 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
           return;
         }
         // ——— Multi-sig: signer1 (saved in config) signs after request-release → submit-first-signatures; awaiting signer = signer2 only ———
-        setStepMessage('Step 1: Prepared. Step 2: Requesting release…');
+        setStepMessage('Step 1: Prepared. Step 2: Requesting release with current geolocation…');
 
         const signerCount = await getMultisigSignerCount();
         const multisigFeeDrops = getMultisigFeeDrops(signerCount);
@@ -436,8 +435,9 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
         }
 
         setStepMessage('Step 3: Released.');
+        const finishHash = finishData.tx_hash ?? '—';
         setSuccess(
-          `Payment sent. Escrow created: ${createTxHash || '—'}. Released: ${finishData.tx_hash ?? '—'}.`
+          `Payment sent successfully.\nEscrowCreate: ${createTxHash || '—'}\nEscrowFinish: ${finishHash}`
         );
         setRecipient('');
         setAmount('');
@@ -547,7 +547,9 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
             {stepMessage}
           </p>
         )}
-        {success && <p className="text-xs text-green-400">{success}</p>}
+        {success && (
+          <p className="text-xs text-green-400 whitespace-pre-line">{success}</p>
+        )}
 
         <div className="flex gap-2 mt-auto">
           <button
@@ -635,7 +637,9 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
           {stepMessage}
         </p>
       )}
-      {success && <p className="text-xs text-green-400">{success}</p>}
+      {success && (
+        <p className="text-xs text-green-400 whitespace-pre-line">{success}</p>
+      )}
 
       <button
         type="button"

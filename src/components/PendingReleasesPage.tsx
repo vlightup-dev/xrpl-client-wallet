@@ -48,6 +48,8 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
   /** When set, show transaction detail view before signing. */
   const [reviewBundle, setReviewBundle] = useState<ReviewBundle | null>(null);
   const [fetchingBundle, setFetchingBundle] = useState<string | null>(null);
+  /** Success message with EscrowCreate and EscrowFinish hashes after completing a release. */
+  const [completeSuccess, setCompleteSuccess] = useState<string | null>(null);
 
   const fetchPending = useCallback(async () => {
     if (!API_BASE_URL) {
@@ -92,6 +94,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
   /** Fetch bundle and show detail view (EscrowCreate + EscrowFinish) before signing. */
   const openDetailView = useCallback(
     async (pendingId: string) => {
+      setCompleteSuccess(null);
       if (!API_BASE_URL) {
         setError('API base URL is not configured.');
         return;
@@ -273,6 +276,11 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
           return;
         }
         setStepMessage('Release complete.');
+        const createHash = completeData.tx_hash_create ?? '—';
+        const finishHash = completeData.tx_hash_finish ?? '—';
+        setCompleteSuccess(
+          `Release complete.\nEscrowCreate: ${createHash}\nEscrowFinish: ${finishHash}`
+        );
         setReviewBundle(null);
         await fetchPending();
       } catch (e) {
@@ -366,7 +374,10 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
       <header className="flex items-center justify-between pb-2 border-b border-gray-700">
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => {
+            setCompleteSuccess(null);
+            onBack();
+          }}
           className="p-1 rounded text-gray-400 hover:text-white transition-colors"
           aria-label="Back"
         >
@@ -392,6 +403,9 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
         <p className="text-xs text-sky-300 whitespace-pre-line" aria-live="polite">
           {stepMessage}
         </p>
+      )}
+      {completeSuccess && (
+        <p className="text-xs text-green-400 whitespace-pre-line">{completeSuccess}</p>
       )}
 
       {!loading && pending.length === 0 && !error && (
