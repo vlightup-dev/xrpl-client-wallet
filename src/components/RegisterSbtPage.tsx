@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { getCoords } from '../coords';
 import { setSbtCredentials } from '../trustauthyStorage';
 
 const API_BASE_URL =
@@ -26,20 +27,7 @@ export function RegisterSbtPage({ address, onBack, onSuccess }: RegisterSbtPageP
     setLocationStatus('getting');
     setError(null);
     try {
-      // Fetch location from GNSS API
-      const response = await fetch('http://localhost:8000/api/gnss');
-      if (!response.ok) {
-        throw new Error(`GNSS API error: ${response.status}`);
-      }
-      const data = await response.json();
-      if (!Array.isArray(data) || data.length === 0) {
-        throw new Error('No location data available from GNSS API');
-      }
-      const first = data[0];
-      const result = {
-        latitude: first.lat,
-        longitude: first.lon,
-      };
+      const result = await getCoords();
       setCoords(result);
       setLocationStatus('ok');
       return result;
