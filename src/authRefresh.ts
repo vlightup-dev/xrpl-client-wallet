@@ -3,10 +3,9 @@
  * Uses stored SBT credentials and location signature (same as escrow flows).
  */
 
+import { getCoords } from './coords';
 import { computeLocationSignature } from './geohashLocationHash';
 import { getSbtCredentials, setSbtCredentials } from './trustauthyStorage';
-
-const DEFAULT_COORDS = { latitude: 35.6895, longitude: 139.6917 };
 
 /**
  * Call POST /access-token to get a fresh JWT, then update stored credentials.
@@ -19,13 +18,14 @@ export async function refreshAccessToken(apiBaseUrl: string): Promise<Awaited<Re
     return null;
   }
   const base = apiBaseUrl.replace(/\/$/, '');
+  const coords = await getCoords();
   const timestamp = Math.floor(Date.now() / 1000);
   const nonce = crypto.randomUUID?.() ?? `${timestamp}-${Math.random().toString(36).slice(2)}`;
   const locationSignature = await computeLocationSignature(
     creds.geoauth_secret,
     creds.digital_secret,
-    DEFAULT_COORDS.latitude,
-    DEFAULT_COORDS.longitude
+    coords.latitude,
+    coords.longitude
   );
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -79,13 +79,14 @@ async function refreshBodyNonce(
     return null;
   }
   if (body == null || typeof body.nonce === 'undefined') return null;
+  const coords = await getCoords();
   const timestamp = Math.floor(Date.now() / 1000);
   const nonce = crypto.randomUUID?.() ?? `${timestamp}-${Math.random().toString(36).slice(2)}`;
   const locationSignature = await computeLocationSignature(
     creds.geoauth_secret,
     creds.digital_secret,
-    DEFAULT_COORDS.latitude,
-    DEFAULT_COORDS.longitude
+    coords.latitude,
+    coords.longitude
   );
   return JSON.stringify({
     ...body,

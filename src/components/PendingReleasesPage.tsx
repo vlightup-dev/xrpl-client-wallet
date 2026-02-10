@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import { decode, multisign, Wallet } from 'xrpl';
 import type { Transaction } from 'xrpl';
-import { computeLocationSignature } from '../geohashLocationHash';
+import { getCoords } from '../coords';
 import { fetchWithAuth } from '../authRefresh';
+import { computeLocationSignature } from '../geohashLocationHash';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
@@ -109,7 +110,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
       setFetchingBundle(pendingId);
       setError(null);
       const base = API_BASE_URL.replace(/\/$/, '');
-      const coords = { latitude: 35.6895, longitude: 139.6917 };
+      const coords = await getCoords();
       const timestamp = Math.floor(Date.now() / 1000);
       const nonce = crypto.randomUUID?.() ?? `${timestamp}-${Math.random().toString(36).slice(2)}`;
       const locationSignature = await computeLocationSignature(
@@ -170,7 +171,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
       setError(null);
 
       const base = API_BASE_URL.replace(/\/$/, '');
-      const coords = { latitude: 35.6895, longitude: 139.6917 };
+      const coords = await getCoords();
 
       let createTx: Record<string, unknown>;
       let finishTx: Record<string, unknown>;

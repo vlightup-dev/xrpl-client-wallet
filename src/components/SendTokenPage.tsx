@@ -3,6 +3,7 @@ import { Client, decode, Wallet } from 'xrpl';
 import { fetchWithAuth } from '../authRefresh';
 import { computeLocationSignature } from '../geohashLocationHash';
 import { getMultisigAccount, getMultisigSignerCount } from '../multisigStorage';
+import { getCoords } from '../coords';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
@@ -19,22 +20,6 @@ function amountToDrops(amountXrp: string): string {
   const n = parseFloat(amountXrp.replace(/,/g, ''));
   if (Number.isNaN(n) || n <= 0) return '0';
   return Math.round(n * XRP_TO_DROPS).toString();
-}
-
-const DEFAULT_COORDS = { latitude: 35.6895, longitude: 139.6917 };
-
-/** Fetch latitude/longitude asynchronously; falls back to DEFAULT_COORDS on error or denial. */
-function getCoords(): Promise<{ latitude: number; longitude: number }> {
-  
-  return new Promise((resolve) => {
-      resolve(DEFAULT_COORDS);
-      return;
-    // navigator.geolocation.getCurrentPosition(
-    //   (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-    //   () => resolve(DEFAULT_COORDS),
-    //   { timeout: 15000, maximumAge: 300000, enableHighAccuracy: false }
-    // );
-  });
 }
 
 /** Fee for EscrowCreate (multisig only): 2 signers -> 60, 3 signers -> 90. */
