@@ -2,10 +2,27 @@
   "manifest_version": 3,
   "name": "TRUSTAUTHY Wallet",
   "version": "1.0.0",
-  "description": "Chrome extension for XRPL using GemWallet API",
+  "description": "Chrome extension for XRPL using GemWallet API and Crossmark integration",
   "action": {
     "default_popup": "index.html",
     "default_title": "TRUSTAUTHY XRPL Wallet"
   },
-  "permissions": ["storage","geolocation"]
+  "permissions": ["storage", "geolocation", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["pageWorld.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
 }

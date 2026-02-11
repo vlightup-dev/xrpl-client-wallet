@@ -19,9 +19,18 @@ type UnlockedDashboardProps = {
   onSendPayment?: () => void;
   onPendingReleases?: () => void;
   onConfigureMultisig?: () => void;
+  isCrossmarkWallet?: boolean;
 };
 
-export function UnlockedDashboard({ address, wallet: _wallet, onLogout, onRegisterSbt, onSendPayment, onPendingReleases, onConfigureMultisig }: UnlockedDashboardProps) {
+export function UnlockedDashboard({ 
+  address, 
+  onLogout, 
+  onRegisterSbt, 
+  onSendPayment, 
+  onPendingReleases, 
+  onConfigureMultisig,
+  isCrossmarkWallet = false 
+}: UnlockedDashboardProps) {
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -157,6 +166,14 @@ export function UnlockedDashboard({ address, wallet: _wallet, onLogout, onRegist
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
           Your address
         </h2>
+        {isCrossmarkWallet && (
+          <div className="mb-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30">
+            <svg className="w-3 h-3 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 2a8 8 0 100 16 8 8 0 000-16zM9 9V5h2v4h4v2h-4v4H9v-4H5V9h4z"/>
+            </svg>
+            <span className="text-[10px] font-semibold text-purple-300 uppercase tracking-wide">Crossmark Wallet</span>
+          </div>
+        )}
         <p className="font-mono text-xs break-all text-gray-200 mb-2" title={address}>
           {address}
         </p>
