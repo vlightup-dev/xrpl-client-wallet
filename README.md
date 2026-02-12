@@ -1,8 +1,11 @@
-# XRPL Testnet Wallet – Chrome Extension
+# XRPL Multi-sig + conditional escrow Wallet – Chrome Extension
 
 Chrome extension built with **React** and **Vite** that creates and manages an **XRPL (XRP Ledger) wallet** on Testnet using [xrpl.js](https://js.xrpl.org/).
 
 - [XRPL.js Get Started](https://xrpl.org/docs/tutorials/javascript/build-apps/get-started)
+
+## Architecture  
+Checkout the architecture for multi-sig wallet with conditional escrow integration in API repo: https://github.com/vlightup-dev/platform-api-xrpl
 
 ## Features
 
