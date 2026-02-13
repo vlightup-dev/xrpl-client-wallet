@@ -19,6 +19,7 @@ type PendingItem = {
   destination: string;
   amount_drops: string;
   signer_addresses: string[];
+  signer_quorum?: number;
 };
 
 type ReviewBundle = {
@@ -26,6 +27,7 @@ type ReviewBundle = {
   createTx: Record<string, unknown>;
   finishTx: Record<string, unknown>;
   item: PendingItem;
+  signer_quorum: number;
 };
 
 type PendingReleasesPageProps = {
@@ -134,6 +136,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
         const bundleData = (await getBundleRes.json().catch(() => ({}))) as {
           escrow_create_tx_json?: Record<string, unknown>;
           escrow_finish_tx_json?: Record<string, unknown>;
+          signer_quorum?: number;
           error?: string;
         };
         if (!getBundleRes.ok) {
@@ -146,7 +149,8 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
           setError('Missing transaction data from server.');
           return;
         }
-        setReviewBundle({ pendingId, createTx, finishTx, item });
+        const signerQuorum = bundleData.signer_quorum ?? item.signer_quorum ?? 2;
+        setReviewBundle({ pendingId, createTx, finishTx, item, signer_quorum: signerQuorum });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Request failed');
       } finally {
@@ -157,7 +161,10 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
   );
 
   const completeRelease = useCallback(
-    async (pendingId: string, preFetched?: { createTx: Record<string, unknown>; finishTx: Record<string, unknown> }) => {
+    async (
+      pendingId: string,
+      preFetched?: { createTx: Record<string, unknown>; finishTx: Record<string, unknown>; signer_quorum?: number }
+    ) => {
       if (!wallet || !API_BASE_URL) {
         setError(wallet ? 'API base URL is not configured.' : 'Wallet not available.');
         return;
@@ -175,6 +182,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
 
       let createTx: Record<string, unknown>;
       let finishTx: Record<string, unknown>;
+      let fetchedSignerQuorum: number | undefined;
 
       try {
         if (preFetched) {
@@ -204,6 +212,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
           const bundleData = (await getBundleRes.json().catch(() => ({}))) as {
             escrow_create_tx_json?: Record<string, unknown>;
             escrow_finish_tx_json?: Record<string, unknown>;
+            signer_quorum?: number;
             error?: string;
           };
           if (!getBundleRes.ok) {
@@ -212,13 +221,16 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
           }
           createTx = bundleData.escrow_create_tx_json!;
           finishTx = bundleData.escrow_finish_tx_json!;
+          fetchedSignerQuorum = bundleData.signer_quorum;
           if (!createTx || !finishTx) {
             setError('Missing transaction data from server.');
             return;
           }
         }
 
-        // Both EscrowCreate and EscrowFinish must be multi-signed by signer1 and signer2 (2-of-2).
+        const item = pending.find((p) => p.pending_id === pendingId);
+        const signerQuorum = preFetched?.signer_quorum ?? fetchedSignerQuorum ?? item?.signer_quorum ?? 2;
+
         setStepMessage('Signing escrow…');
 
         const createWithoutSigners = { ...createTx };
@@ -226,7 +238,6 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
         const finishWithoutSigners = { ...finishTx };
         delete (finishWithoutSigners as Record<string, unknown>).Signers;
 
-        const item = pending.find((p) => p.pending_id === pendingId);
         if (!item?.owner) {
           setError('Could not determine org account for this pending release.');
           return;
@@ -243,7 +254,11 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
         const combinedCreateJson = decode(combinedCreateBlob) as Record<string, unknown>;
         const combinedFinishJson = decode(combinedFinishBlob) as Record<string, unknown>;
 
-        setStepMessage('Completing release…');
+        const sigCountCreate = (combinedCreateJson.Signers as unknown[])?.length ?? 0;
+        const sigCountFinish = (combinedFinishJson.Signers as unknown[])?.length ?? 0;
+        const quorumReached = sigCountCreate >= signerQuorum && sigCountFinish >= signerQuorum;
+
+        setStepMessage(quorumReached ? 'Completing release…' : 'Submitting your signature…');
 
         const timestampComplete = Math.floor(Date.now() / 1000);
         const nonceComplete = crypto.randomUUID?.() ?? `${timestampComplete}-${Math.random().toString(36).slice(2)}`;
@@ -253,35 +268,48 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
           coords.latitude,
           coords.longitude
         );
-        const completeRes = await fetchWithAuth(base, '/api/v1/xrpl/escrow/complete-release', {
+        const bodyPayload = {
+          pending_id: pendingId,
+          condition: pendingId,
+          digital_id: String(creds.digital_id),
+          timestamp: timestampComplete,
+          nonce: nonceComplete,
+          location_signature: locationSignatureComplete,
+          escrow_create_tx_json: combinedCreateJson,
+          escrow_finish_tx_json: combinedFinishJson,
+        };
+        const endpoint = quorumReached ? '/api/v1/xrpl/escrow/complete-release' : '/api/v1/xrpl/escrow/submit-additional-signatures';
+        const completeRes = await fetchWithAuth(base, endpoint, {
           method: 'POST',
-          body: JSON.stringify({
-            pending_id: pendingId,
-            condition: pendingId,
-            digital_id: String(creds.digital_id),
-            timestamp: timestampComplete,
-            nonce: nonceComplete,
-            location_signature: locationSignatureComplete,
-            escrow_create_tx_json: combinedCreateJson,
-            escrow_finish_tx_json: combinedFinishJson,
-          }),
+          body: JSON.stringify(bodyPayload),
         });
         const completeData = (await completeRes.json().catch(() => ({}))) as {
           released?: boolean;
           tx_hash_create?: string;
           tx_hash_finish?: string;
+          quorum_reached?: boolean;
+          status?: string;
           error?: string;
         };
         if (!completeRes.ok) {
-          setError(completeData.error || `Complete release failed: ${completeRes.status}`);
+          setError(completeData.error ?? (quorumReached ? `Complete release failed: ${completeRes.status}` : `Submit signature failed: ${completeRes.status}`));
           return;
         }
-        setStepMessage('Release complete.');
-        const createHash = completeData.tx_hash_create ?? '—';
-        const finishHash = completeData.tx_hash_finish ?? '—';
-        setCompleteSuccess(
-          `Release complete.\nEscrowCreate: ${createHash}\nEscrowFinish: ${finishHash}`
-        );
+        if (quorumReached && completeData.released) {
+          setStepMessage('Release complete.');
+          const createHash = completeData.tx_hash_create ?? '—';
+          const finishHash = completeData.tx_hash_finish ?? '—';
+          setCompleteSuccess(
+            `Release complete.\nEscrowCreate: ${createHash}\nEscrowFinish: ${finishHash}`
+          );
+        } else {
+          setStepMessage(null);
+          setCompleteSuccess(
+            completeData.quorum_reached
+              ? 'Your signature was added. Another signer can now complete the release, or you may refresh and complete if quorum is reached.'
+              : `Signature added (${sigCountCreate}/${signerQuorum}). More signers needed to reach quorum.`
+          );
+        }
         setReviewBundle(null);
         await fetchPending();
       } catch (e) {
@@ -296,7 +324,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
 
   // —— Transaction detail view (before signing) ——
   if (reviewBundle) {
-    const { pendingId, createTx, finishTx, item } = reviewBundle;
+    const { pendingId, createTx, finishTx, item, signer_quorum: quorum } = reviewBundle;
     const signersCreate = (createTx.Signers as unknown[])?.length ?? 0;
     const signersFinish = (finishTx.Signers as unknown[])?.length ?? 0;
     return (
@@ -330,7 +358,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
             <p><span className="text-gray-500">Amount:</span> {formatTxField(createTx.Amount)} drops</p>
             <p><span className="text-gray-500">Destination:</span> {formatTxField(createTx.Destination)}</p>
             <p><span className="text-gray-500">Condition:</span> {(String(createTx.Condition ?? '')).slice(0, 24)}…</p>
-            <p><span className="text-gray-500">Signers:</span> {signersCreate}</p>
+            <p><span className="text-gray-500">Signers:</span> {signersCreate}/{quorum} (M-of-N)</p>
           </div>
         </section>
 
@@ -341,7 +369,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
             <p><span className="text-gray-500">OfferSequence:</span> {formatTxField(finishTx.OfferSequence)}</p>
             <p><span className="text-gray-500">Condition:</span> {(String(finishTx.Condition ?? '')).slice(0, 24)}…</p>
             <p><span className="text-gray-500">Fulfillment:</span> {(String(finishTx.Fulfillment ?? '')).slice(0, 24)}…</p>
-            <p><span className="text-gray-500">Signers:</span> {signersFinish}</p>
+            <p><span className="text-gray-500">Signers:</span> {signersFinish}/{quorum} (M-of-N)</p>
           </div>
         </section>
 
@@ -352,7 +380,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
         <div className="flex flex-col gap-2 mt-auto">
           <button
             type="button"
-            onClick={() => completeRelease(pendingId, { createTx, finishTx })}
+            onClick={() => completeRelease(pendingId, { createTx, finishTx, signer_quorum: reviewBundle.signer_quorum })}
             disabled={completingId != null}
             className="w-full py-2.5 px-3 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white"
           >

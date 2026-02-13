@@ -4,7 +4,8 @@
  */
 
 const MULTISIG_ACCOUNT_KEY = 'multisig_org_account';
-const MULTISIG_SIGNER_COUNT_KEY = 'multisig_signer_count'; // 2 or 3 (for fee: 2 signers vs 3 signers)
+const MULTISIG_SIGNER_COUNT_KEY = 'multisig_signer_count'; // N: total signers (for fee: 30*N drops)
+const MULTISIG_QUORUM_KEY = 'multisig_quorum'; // M: required signatures (M-of-N)
 const SIGNER1_SALT_KEY = 'multisig_signer1_salt';
 const SIGNER1_ENCRYPTED_KEYS_KEY = 'multisig_signer1_encrypted_keys';
 
@@ -57,27 +58,39 @@ export async function getMultisigAccount(): Promise<string | null> {
 
 export async function setMultisigAccount(account: string | null): Promise<void> {
   if (account === null || (account && !account.trim())) {
-    await chrome.storage.local.remove([MULTISIG_ACCOUNT_KEY, MULTISIG_SIGNER_COUNT_KEY]);
+    await chrome.storage.local.remove([MULTISIG_ACCOUNT_KEY, MULTISIG_SIGNER_COUNT_KEY, MULTISIG_QUORUM_KEY]);
     return;
   }
   await chrome.storage.local.set({ [MULTISIG_ACCOUNT_KEY]: account.trim() });
 }
 
-/** Signer count in the multisig list: 2 for 2-of-2, 3 for 2-of-3 or 3-of-3. Used for fee (e.g. (N+1)*30 drops). */
-export async function getMultisigSignerCount(): Promise<2 | 3 | null> {
+/** Total signer count N in the multisig list. Used for fee (30*N drops). */
+export async function getMultisigSignerCount(): Promise<number | null> {
   const result = await chrome.storage.local.get([MULTISIG_SIGNER_COUNT_KEY]);
   const v = result[MULTISIG_SIGNER_COUNT_KEY];
-  if (v === 2 || v === 3) return v;
-  if (typeof v === 'number' && v >= 2 && v <= 3) return v as 2 | 3;
+  if (typeof v === 'number' && v >= 2 && v <= 8) return v;
+  if (v === 2 || v === 3) return v as number;
   return null;
 }
 
-export async function setMultisigSignerCount(count: 2 | 3): Promise<void> {
-  await chrome.storage.local.set({ [MULTISIG_SIGNER_COUNT_KEY]: count });
+export async function setMultisigSignerCount(count: number): Promise<void> {
+  await chrome.storage.local.set({ [MULTISIG_SIGNER_COUNT_KEY]: Math.min(8, Math.max(2, count)) });
+}
+
+/** Required signatures M (M-of-N). Default 2 if not set. */
+export async function getMultisigQuorum(): Promise<number> {
+  const result = await chrome.storage.local.get([MULTISIG_QUORUM_KEY]);
+  const v = result[MULTISIG_QUORUM_KEY];
+  if (typeof v === 'number' && v >= 1 && v <= 8) return v;
+  return 2;
+}
+
+export async function setMultisigQuorum(quorum: number): Promise<void> {
+  await chrome.storage.local.set({ [MULTISIG_QUORUM_KEY]: Math.min(8, Math.max(1, quorum)) });
 }
 
 export async function clearMultisigSignerCount(): Promise<void> {
-  await chrome.storage.local.remove([MULTISIG_SIGNER_COUNT_KEY]);
+  await chrome.storage.local.remove([MULTISIG_SIGNER_COUNT_KEY, MULTISIG_QUORUM_KEY]);
 }
 
 export async function isMultisigMode(): Promise<boolean> {

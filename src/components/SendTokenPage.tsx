@@ -22,9 +22,10 @@ function amountToDrops(amountXrp: string): string {
   return Math.round(n * XRP_TO_DROPS).toString();
 }
 
-/** Fee for EscrowCreate (multisig only): 2 signers -> 60, 3 signers -> 90. */
-function getMultisigFeeDrops(signerCount: 2 | 3 | null): string {
-  return signerCount === 3 ? '90' : '60';
+/** Fee for EscrowCreate (multisig): 30 drops per signer (N signers = 30*N). */
+function getMultisigFeeDrops(signerCount: number | null): string {
+  if (signerCount == null || signerCount < 2) return '60';
+  return String(Math.min(8, Math.max(2, signerCount)) * 30);
 }
 
 /** EscrowFinish with Fulfillment has a much higher minimum: 10 × (33 + fulfillment_size/16). For 32-byte preimage = 350; use 400 for safety. */
@@ -198,13 +199,18 @@ export function SendTokenPage({ address, wallet, onBack, multisigAccount: multis
 
       const coords = await getCoords();
 
-      // Prepare escrow: get condition + params (server stores fulfillment; client will create tx)
+      // Prepare escrow: get condition + params (server stores fulfillment; client will create tx).
+      // For multisig, send owner so server sets awaiting_signer_addresses from multisig_config.
+      const prepareBody: Record<string, unknown> = {
+        destination: recipient.trim(),
+        amount_drops: drops,
+      };
+      if (multisigAccount?.trim()) {
+        prepareBody.owner = multisigAccount.trim();
+      }
       const prepareRes = await fetchWithAuth(base, '/api/v1/xrpl/escrow/prepare', {
         method: 'POST',
-        body: JSON.stringify({
-          destination: recipient.trim(),
-          amount_drops: drops,
-        }),
+        body: JSON.stringify(prepareBody),
       });
       const prepareData = (await prepareRes.json().catch(() => ({}))) as {
         condition?: string;
