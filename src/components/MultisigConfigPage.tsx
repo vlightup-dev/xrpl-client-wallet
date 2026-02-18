@@ -11,7 +11,8 @@ const API_BASE_URL =
   (import.meta.env.VITE_API_SERVER_URL as string)?.trim() ||
   '';
 
-type MultisigMode = '2-of-2' | '2-of-3' | '3-of-3';
+const MAX_SIGNERS = 5;
+const MIN_SIGNERS = 2;
 
 type MultisigConfigPageProps = {
   address: string;
@@ -23,10 +24,8 @@ type MultisigConfigPageProps = {
 };
 
 export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1Saved }: MultisigConfigPageProps) {
-  const [signer1, setSigner1] = useState('');
-  const [signer2, setSigner2] = useState('');
-  const [signer3, setSigner3] = useState('');
-  const [mode, setMode] = useState<MultisigMode>('2-of-2');
+  const [signers, setSigners] = useState<string[]>(['', '']);
+  const [quorum, setQuorum] = useState(2);
   const [submitting, setSubmitting] = useState(false);
   const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,25 +39,20 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
   const [pendingSignerWallet, setPendingSignerWallet] = useState<{ seed: string; address: string } | null>(null);
   const [seedRevealed, setSeedRevealed] = useState(false);
 
-  const signer1Trim = signer1.trim();
-  const signer2Trim = signer2.trim();
-  const signer3Trim = signer3.trim();
-  const needThirdSigner = mode === '2-of-3' || mode === '3-of-3';
-  const quorum = mode === '3-of-3' ? 3 : 2;
+  const signerTrims = signers.map((s) => s.trim()).filter(Boolean);
   const notSelf = (s: string) => s.length > 0 && s !== address;
-  const canSave =
-    (mode === '2-of-2' &&
-      notSelf(signer1Trim) &&
-      notSelf(signer2Trim) &&
-      signer1Trim !== signer2Trim) ||
-    (needThirdSigner &&
-      notSelf(signer1Trim) &&
-      notSelf(signer2Trim) &&
-      notSelf(signer3Trim) &&
-      new Set([signer1Trim, signer2Trim, signer3Trim]).size === 3);
+  const uniqueSigners = [...new Set(signerTrims)];
+  const validSigners = signerTrims.length >= MIN_SIGNERS && signerTrims.length <= MAX_SIGNERS
+    && uniqueSigners.length === signerTrims.length
+    && signerTrims.every(notSelf);
+  const canSave = validSigners;
 
   const handleSave = useCallback(async () => {
-    if (!wallet || !canSave) return;
+    if (!wallet || !canSave || signerTrims.length < MIN_SIGNERS) return;
+    if (quorum > signerTrims.length) {
+      setError(`Quorum (${quorum}) cannot exceed number of signers (${signerTrims.length}). Choose M ≤ N or add more signers.`);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     setSuccess(null);
@@ -67,20 +61,9 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
     try {
       await client.connect();
       setStepMessage('Step 2: Submitting SignerListSet…');
-      const entries: { SignerEntry: { Account: string; SignerWeight: number } }[] = [
-        { SignerEntry: { Account: signer1Trim, SignerWeight: 1 } },
-        { SignerEntry: { Account: signer2Trim, SignerWeight: 1 } },
-      ];
-      if (needThirdSigner) {
-        if (!signer3Trim) {
-          setError(`For ${mode} add a third signer address.`);
-          setStepMessage(null);
-          await client.disconnect();
-          setSubmitting(false);
-          return;
-        }
-        entries.push({ SignerEntry: { Account: signer3Trim, SignerWeight: 1 } });
-      }
+      const entries: { SignerEntry: { Account: string; SignerWeight: number } }[] = signerTrims.map((acc) => ({
+        SignerEntry: { Account: acc, SignerWeight: 1 },
+      }));
       const ledgerIndexSignerList = await client.getLedgerIndex();
       const tx = {
         TransactionType: 'SignerListSet' as const,
@@ -107,11 +90,8 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       await client.submitAndWait(signedDisable.tx_blob);
       setStepMessage('Step 4: Registering with server…');
       await setMultisigAccount(address);
-      const signerAddresses = needThirdSigner && signer3Trim
-        ? [signer1Trim, signer2Trim, signer3Trim]
-        : [signer1Trim, signer2Trim];
       const registerBody: Record<string, unknown> = {
-        signer_addresses: signerAddresses,
+        signer_addresses: signerTrims,
         signer_quorum: quorum,
       };
       if (API_BASE_URL) {
@@ -136,15 +116,14 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
         }
       }
       setStepMessage(null);
-      await setMultisigSignerCount(signerAddresses.length);
+      await setMultisigSignerCount(signerTrims.length);
       await setMultisigQuorum(quorum);
       onSaved?.();
       setSuccess(
         `Multi-sig configured. SignerListSet: ${txHash ?? '—'}. Master key disabled. This wallet is now the multi-sig account; use a signer wallet to initiate escrows.`
       );
-      setSigner1('');
-      setSigner2('');
-      setSigner3('');
+      setSigners(['', '']);
+      setQuorum(2);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to set up multi-sig';
       if (
@@ -169,7 +148,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       client.disconnect();
       setSubmitting(false);
     }
-  }, [address, wallet, mode, needThirdSigner, quorum, signer1Trim, signer2Trim, signer3Trim, canSave, onSaved]);
+  }, [address, wallet, quorum, signerTrims, canSave, onSaved]);
 
   const handleCreateSignerWalletClick = useCallback(() => {
     setError(null);
@@ -193,7 +172,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
         return;
       }
       await setMultisigSigner1(password, newWallet.publicKey, newWallet.privateKey);
-      setSigner1(newWallet.address);
+      setSigners((prev) => [newWallet.address, ...prev.slice(1)]);
       setPendingSignerWallet({ seed: newWallet.seed, address: newWallet.address });
       setSeedRevealed(false);
       setShowPasswordForSigner1(false);
@@ -235,7 +214,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       </header>
 
       <p className="text-xs text-gray-400">
-        This wallet will become the multi-sig account. Choose 2-of-2, 2-of-3, or 3-of-3 and add the other signer addresses. XRPL does not allow the multi-sig account itself in the list; to sign as yourself, use a different address (e.g. another wallet or a regular key).
+        This wallet will become the multi-sig account. Add 2–5 signer addresses and set how many signatures are required (quorum). XRPL does not allow the multi-sig account itself in the list; to sign as yourself, use a different address (e.g. another wallet or a regular key).
       </p>
 
       <section className="flex flex-col gap-2">
@@ -245,44 +224,64 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       </section>
 
       <section className="flex flex-col gap-2">
-        <label className="text-xs font-medium text-gray-400" htmlFor="ms-mode">
-          Multi-sig type
-        </label>
-        <select
-          id="ms-mode"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as MultisigMode)}
-          className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm focus:border-sky-500 focus:outline-none"
-        >
-          <option value="2-of-2">2-of-2 (2 signers, quorum 2)</option>
-          <option value="2-of-3">2-of-3 (3 signers, quorum 2)</option>
-          <option value="3-of-3">3-of-3 (3 signers, quorum 3)</option>
-        </select>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <label className="text-xs font-medium text-gray-400" htmlFor="ms-signer1">
-          Signer 1 address
-        </label>
-        <div className="flex gap-2">
-          <input
-            id="ms-signer1"
-            type="text"
-            value={signer1}
-            onChange={(e) => setSigner1(e.target.value)}
-            placeholder="rOtherSigner..."
-            className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-xs font-mono placeholder-gray-500 focus:border-sky-500 focus:outline-none"
-          />
-          {!showPasswordForSigner1 && !pendingSignerWallet && (
-            <button
-              type="button"
-              onClick={handleCreateSignerWalletClick}
-              className="shrink-0 px-3 py-2 rounded-lg text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 transition-colors"
-            >
-              Create signer wallet
-            </button>
-          )}
-        </div>
+        <label className="text-xs font-medium text-gray-400">Signers (2–5 addresses)</label>
+        {signers.map((value, index) => (
+          <div key={index} className="flex flex-col gap-1">
+            <label className="text-[11px] text-gray-500" htmlFor={`ms-signer-${index}`}>
+              Signer {index + 1}
+            </label>
+            <div className="flex gap-2">
+              <input
+                id={`ms-signer-${index}`}
+                type="text"
+                value={value}
+                onChange={(e) => {
+                  setSigners((prev) => {
+                    const next = [...prev];
+                    next[index] = e.target.value;
+                    return next;
+                  });
+                  if (signerTrims.length >= 2 && quorum > signerTrims.length - (value.trim() ? 0 : 1)) {
+                    setQuorum((q) => Math.max(1, Math.min(q, signerTrims.length - (value.trim() ? 0 : 1))));
+                  }
+                }}
+                placeholder="rOtherSigner..."
+                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-xs font-mono placeholder-gray-500 focus:border-sky-500 focus:outline-none"
+              />
+              {index === 0 && !showPasswordForSigner1 && !pendingSignerWallet && (
+                <button
+                  type="button"
+                  onClick={handleCreateSignerWalletClick}
+                  className="shrink-0 px-3 py-2 rounded-lg text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 transition-colors"
+                >
+                  Create signer wallet
+                </button>
+              )}
+              {index >= MIN_SIGNERS && signers.length > MIN_SIGNERS && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSigners((prev) => prev.filter((_, i) => i !== index));
+                    setQuorum((q) => Math.min(q, Math.max(1, signers.length - 1)));
+                  }}
+                  className="shrink-0 px-2 py-2 rounded-lg text-xs font-medium text-gray-400 hover:text-red-400 transition-colors"
+                  aria-label={`Remove signer ${index + 1}`}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {signers.length < MAX_SIGNERS && (
+          <button
+            type="button"
+            onClick={() => setSigners((prev) => [...prev, ''])}
+            className="mt-1 py-2 px-3 rounded-lg text-xs font-medium border border-dashed border-gray-600 text-gray-400 hover:border-sky-500 hover:text-sky-400 transition-colors"
+          >
+            Add a signer
+          </button>
+        )}
         {showPasswordForSigner1 && (
           <div className="flex flex-col gap-2 p-3 rounded-lg bg-gray-800 border border-gray-600">
             <p className="text-xs text-gray-300">
@@ -354,34 +353,25 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       </section>
 
       <section className="flex flex-col gap-2">
-        <label className="text-xs font-medium text-gray-400" htmlFor="ms-signer2">
-          Signer 2 address {needThirdSigner ? '(required for 2-of-3 and 3-of-3)' : '(required for 2-of-2)'}
+        <label className="text-xs font-medium text-gray-400" htmlFor="ms-quorum">
+          Quorum (M)
         </label>
-        <input
-          id="ms-signer2"
-          type="text"
-          value={signer2}
-          onChange={(e) => setSigner2(e.target.value)}
-          placeholder="rOtherSigner..."
-          className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-xs font-mono placeholder-gray-500 focus:border-sky-500 focus:outline-none"
-        />
+        <p className="text-[11px] text-gray-500">
+          Number of signatures required to authorize (M). Must be 2–5 and ≤ number of signers (N). Validated on Save.
+        </p>
+        <select
+          id="ms-quorum"
+          value={quorum}
+          onChange={(e) => setQuorum(Number(e.target.value))}
+          className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm focus:border-sky-500 focus:outline-none"
+        >
+          {[2, 3, 4, 5].map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
       </section>
-
-      {needThirdSigner && (
-        <section className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-gray-400" htmlFor="ms-signer3">
-            Signer 3 address (required for 2-of-3 and 3-of-3)
-          </label>
-          <input
-            id="ms-signer3"
-            type="text"
-            value={signer3}
-            onChange={(e) => setSigner3(e.target.value)}
-            placeholder="rOtherSigner..."
-            className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-xs font-mono placeholder-gray-500 focus:border-sky-500 focus:outline-none"
-          />
-        </section>
-      )}
 
       {error && <p className="text-xs text-red-400">{error}</p>}
       {success && <p className="text-xs text-green-400">{success}</p>}
