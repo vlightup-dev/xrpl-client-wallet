@@ -6,6 +6,7 @@
 const MULTISIG_ACCOUNT_KEY = 'multisig_org_account';
 const MULTISIG_SIGNER_COUNT_KEY = 'multisig_signer_count'; // N: total signers (for fee: 30*N drops)
 const MULTISIG_QUORUM_KEY = 'multisig_quorum'; // M: required signatures (M-of-N)
+const SIGNER1_ADDRESS_KEY = 'multisig_signer1_address'; // plain address for pre-filling config (like main wallet)
 const SIGNER1_SALT_KEY = 'multisig_signer1_salt';
 const SIGNER1_ENCRYPTED_KEYS_KEY = 'multisig_signer1_encrypted_keys';
 
@@ -98,11 +99,19 @@ export async function isMultisigMode(): Promise<boolean> {
   return account != null;
 }
 
-/** Encrypt and store signer1 key pair (same password as main wallet). Enables escrow signing after reopen. */
+/** Stored signer1 address (plain, for pre-filling config on reopen). */
+export async function getMultisigSigner1Address(): Promise<string | null> {
+  const result = await chrome.storage.local.get([SIGNER1_ADDRESS_KEY]);
+  const value = result[SIGNER1_ADDRESS_KEY] as string | undefined;
+  return value && value.trim() ? value.trim() : null;
+}
+
+/** Encrypt and store signer1 key pair and address (same pattern as main wallet). Enables escrow signing and pre-fill after reopen. */
 export async function setMultisigSigner1(
   password: string,
   publicKey: string,
   privateKey: string,
+  address: string,
 ): Promise<void> {
   const credentials: Signer1Credentials = { publicKey, privateKey };
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
@@ -118,6 +127,7 @@ export async function setMultisigSigner1(
   payload.set(iv, 0);
   payload.set(new Uint8Array(ciphertext), iv.length);
   await chrome.storage.local.set({
+    [SIGNER1_ADDRESS_KEY]: address.trim(),
     [SIGNER1_SALT_KEY]: bufferToBase64(salt.buffer),
     [SIGNER1_ENCRYPTED_KEYS_KEY]: bufferToBase64(payload.buffer),
   });
@@ -154,5 +164,5 @@ export async function getMultisigSigner1Credentials(
 }
 
 export async function clearMultisigSigner1(): Promise<void> {
-  await chrome.storage.local.remove([SIGNER1_SALT_KEY, SIGNER1_ENCRYPTED_KEYS_KEY]);
+  await chrome.storage.local.remove([SIGNER1_ADDRESS_KEY, SIGNER1_SALT_KEY, SIGNER1_ENCRYPTED_KEYS_KEY]);
 }

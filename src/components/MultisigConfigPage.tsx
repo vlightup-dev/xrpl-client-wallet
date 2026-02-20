@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Client, Wallet } from 'xrpl';
 import { fetchWithAuth } from '../authRefresh';
-import { setMultisigAccount, setMultisigSigner1, setMultisigSignerCount, setMultisigQuorum } from '../multisigStorage';
+import { setMultisigAccount, setMultisigSigner1, setMultisigSignerCount, setMultisigQuorum, getMultisigSigner1Address } from '../multisigStorage';
 import { getSbtCredentials } from '../trustauthyStorage';
 import { ChevronLeftIcon } from './icons';
 
@@ -26,6 +26,20 @@ type MultisigConfigPageProps = {
 export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1Saved }: MultisigConfigPageProps) {
   const [signers, setSigners] = useState<string[]>(['', '']);
   const [quorum, setQuorum] = useState(2);
+  const [hasStoredSigner1, setHasStoredSigner1] = useState(false);
+
+  // Pre-fill signer1 address from storage when user reopens the page
+  useEffect(() => {
+    let cancelled = false;
+    getMultisigSigner1Address().then((stored) => {
+      if (cancelled) return;
+      if (stored) {
+        setHasStoredSigner1(true);
+        setSigners((prev) => [stored, ...prev.slice(1)]);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -126,20 +140,47 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       setQuorum(2);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to set up multi-sig';
-      if (
-        msg.includes('tefMASTER_DISABLED') ||
-        msg.includes('LastLedgerSequence') ||
-        msg.includes('ledger sequence')
-      ) {
-        if (msg.includes('tefMASTER_DISABLED')) {
-          setError(
-            "This account's master key is already disabled. Multisig is already configured. Use a signer wallet to initiate escrows."
-          );
-        } else {
-          setError(
-            'Transaction expired (ledger closed). Please try again; the second step will now use a longer validity window.'
-          );
+      if (msg.includes('tefMASTER_DISABLED')) {
+        // Reconfigure: SignerListSet may have succeeded; master already disabled. Overwrite Firebase multisig_config.
+        setStepMessage('Step 4: Updating multisig config on server…');
+        await setMultisigAccount(address);
+        const registerBody: Record<string, unknown> = {
+          signer_addresses: signerTrims,
+          signer_quorum: quorum,
+        };
+        if (API_BASE_URL) {
+          const creds = await getSbtCredentials();
+          if (creds?.access_token) {
+            const base = API_BASE_URL.replace(/\/$/, '');
+            let registerRes: Response;
+            try {
+              registerRes = await fetchWithAuth(base, '/api/v1/xrpl/escrow/register-multisig', {
+                method: 'POST',
+                body: JSON.stringify(registerBody),
+              });
+            } catch (networkErr) {
+              setError(networkErr instanceof Error ? networkErr.message : 'Register multisig: network error');
+              return;
+            }
+            if (!registerRes.ok) {
+              const errData = (await registerRes.json().catch(() => ({}))) as { error?: string };
+              setError(errData?.error ?? `Register multisig failed (${registerRes.status})`);
+              return;
+            }
+          }
         }
+        await setMultisigSignerCount(signerTrims.length);
+        await setMultisigQuorum(quorum);
+        onSaved?.();
+        setSuccess(
+          'Signer list updated on ledger. Master key was already disabled. Multisig config (signers and quorum) updated on server.'
+        );
+        setSigners(['', '']);
+        setQuorum(2);
+      } else if (msg.includes('LastLedgerSequence') || msg.includes('ledger sequence')) {
+        setError(
+          'Transaction expired (ledger closed). Please try again; the second step will now use a longer validity window.'
+        );
       } else {
         setError(msg);
       }
@@ -171,7 +212,8 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
         setSigner1CreateError('Failed to generate wallet.');
         return;
       }
-      await setMultisigSigner1(password, newWallet.publicKey, newWallet.privateKey);
+      await setMultisigSigner1(password, newWallet.publicKey, newWallet.privateKey, newWallet.address);
+      setHasStoredSigner1(true);
       setSigners((prev) => [newWallet.address, ...prev.slice(1)]);
       setPendingSignerWallet({ seed: newWallet.seed, address: newWallet.address });
       setSeedRevealed(false);
@@ -248,7 +290,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
                 placeholder="rOtherSigner..."
                 className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-xs font-mono placeholder-gray-500 focus:border-sky-500 focus:outline-none"
               />
-              {index === 0 && !showPasswordForSigner1 && !pendingSignerWallet && (
+              {index === 0 && !hasStoredSigner1 && !showPasswordForSigner1 && !pendingSignerWallet && (
                 <button
                   type="button"
                   onClick={handleCreateSignerWalletClick}
