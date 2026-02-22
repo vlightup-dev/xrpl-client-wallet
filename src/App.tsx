@@ -13,6 +13,12 @@ import {
   clearWallet,
 } from './walletStorage';
 import {
+  getWalletSession,
+  setWalletSession,
+  clearWalletSession,
+  getSessionExpiresAt,
+} from './sessionStorage';
+import {
   HomeNoWallet,
   HomeUnlock,
   CreatePassword,
@@ -55,6 +61,9 @@ export default function App() {
   /** First signer wallet for escrow when main account is multisig (decrypted on unlock if stored). */
   const [signerWallet, setSignerWallet] = useState<InstanceType<typeof Wallet> | null>(null);
 
+  /** When set, we have a 30-min session; logout and clear session when this time is reached. */
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
+
   // Temporary seed storage for backup display (cleared after user confirms backup)
   const [tempSeed, setTempSeed] = useState<string | null>(null);
 
@@ -66,12 +75,46 @@ export default function App() {
     }
   }, [walletExists, view]);
 
+  // On load: restore from session if "keep logged in" was used and session still valid
   useEffect(() => {
-    getWalletExists().then((exists) => {
+    getWalletExists().then(async (exists) => {
       setWalletExists(exists);
-      if (exists) setView('home');
+      if (!exists) {
+        setView('home');
+        return;
+      }
+      const session = await getWalletSession();
+      if (session) {
+        const w = new Wallet(session.publicKey, session.privateKey);
+        setWallet(w);
+        setAddress(w.address);
+        setSignerWallet(
+          session.signer1
+            ? new Wallet(session.signer1.publicKey, session.signer1.privateKey)
+            : null
+        );
+        setSessionExpiresAt(session.expiresAt);
+        setView('unlocked');
+      } else {
+        setView('home');
+      }
     });
   }, []);
+
+  // When unlocked with a session, logout and clear session after 30 minutes
+  useEffect(() => {
+    if (view !== 'unlocked' || sessionExpiresAt == null || sessionExpiresAt <= Date.now()) return;
+    const ms = sessionExpiresAt - Date.now();
+    const timeout = setTimeout(() => {
+      clearWalletSession();
+      setView('home');
+      setAddress(null);
+      setWallet(null);
+      setSignerWallet(null);
+      setSessionExpiresAt(null);
+    }, ms);
+    return () => clearTimeout(timeout);
+  }, [view, sessionExpiresAt]);
 
   const goToCreatePassword = useCallback(() => {
     setView('create-password');
@@ -141,9 +184,21 @@ export default function App() {
       setWallet(w);
       setAddress(w.address);
       const signer1Creds = await getMultisigSigner1Credentials(unlockPassword);
-      setSignerWallet(
-        signer1Creds ? new Wallet(signer1Creds.publicKey, signer1Creds.privateKey) : null
-      );
+      const signer = signer1Creds
+        ? new Wallet(signer1Creds.publicKey, signer1Creds.privateKey)
+        : null;
+      setSignerWallet(signer);
+      if (keepLoggedIn) {
+        await setWalletSession(
+          w.address,
+          creds.publicKey,
+          creds.privateKey,
+          signer1Creds
+            ? { publicKey: signer1Creds.publicKey, privateKey: signer1Creds.privateKey }
+            : undefined
+        );
+        setSessionExpiresAt(getSessionExpiresAt());
+      }
       setUnlockPassword('');
       setView('unlocked');
     } catch {
@@ -151,7 +206,7 @@ export default function App() {
     } finally {
       setUnlocking(false);
     }
-  }, [unlockPassword]);
+  }, [unlockPassword, keepLoggedIn]);
 
   const handleResetPassword = useCallback(async () => {
     if (
@@ -160,6 +215,7 @@ export default function App() {
       )
     )
       return;
+    await clearWalletSession();
     await clearWallet();
     await persistMultisigAccount(null);
     await clearMultisigSigner1();
@@ -168,12 +224,15 @@ export default function App() {
     setWallet(null);
     setSignerWallet(null);
     setMultisigAccount(null);
+    setSessionExpiresAt(null);
     setUnlockPassword('');
     setUnlockError(null);
     setView('home');
   }, []);
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    await clearWalletSession();
+    setSessionExpiresAt(null);
     setView('home');
     setAddress(null);
     setWallet(null);
