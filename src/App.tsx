@@ -365,6 +365,7 @@ export default function App() {
       wallet={wallet}
       onLogout={handleLogout}
       onRegisterSbt={() => setView('register-sbt')}
+      onGetFaucet={() => setView('get-faucet')}
       onSendPayment={() => setView('send-token')}
       onPendingReleases={() => setView('pending-releases')}
       onConfigureMultisig={() => setView('multisig-config')}

@@ -41,6 +41,12 @@ function formatTxField(value: unknown): string {
   return String(value);
 }
 
+function formatDropsAsXrp(value: unknown): string {
+  const drops = Number(value);
+  if (!Number.isFinite(drops)) return '— XRP';
+  return `${(drops / 1_000_000).toFixed(2)} XRP`;
+}
+
 export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps) {
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -304,10 +310,11 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
           );
         } else {
           setStepMessage(null);
+          const totalSigners = item?.signer_addresses?.length ?? signerQuorum;
           setCompleteSuccess(
             completeData.quorum_reached
-              ? 'Your signature was added. Another signer can now complete the release, or you may refresh and complete if quorum is reached.'
-              : `Signature added (${sigCountCreate}/${signerQuorum}). More signers needed to reach quorum.`
+              ? 'Quorum has reached and the escrows have been submitted.'
+              : `Signature added (${sigCountCreate}/${totalSigners} signers). More signers may be needed to reach quorum.`
           );
         }
         setReviewBundle(null);
@@ -327,6 +334,7 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
     const { pendingId, createTx, finishTx, item, signer_quorum: quorum } = reviewBundle;
     const signersCreate = (createTx.Signers as unknown[])?.length ?? 0;
     const signersFinish = (finishTx.Signers as unknown[])?.length ?? 0;
+    const totalConfiguredSigners = Array.isArray(item.signer_addresses) ? item.signer_addresses.length : 0;
     return (
       <div className="flex flex-col gap-4 max-w-[360px] min-h-[400px] bg-gray-900 text-white p-4">
         <header className="flex items-center justify-between pb-2 border-b border-gray-700">
@@ -355,10 +363,11 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
           <h2 className="text-sm font-medium text-gray-300">EscrowCreate</h2>
           <div className="p-3 rounded-lg bg-gray-800 border border-gray-700 text-xs space-y-1 font-mono">
             <p><span className="text-gray-500">Account:</span> {formatTxField(createTx.Account)}</p>
-            <p><span className="text-gray-500">Amount:</span> {formatTxField(createTx.Amount)} drops</p>
+            <p><span className="text-gray-500">Amount:</span> {formatDropsAsXrp(createTx.Amount)}</p>
             <p><span className="text-gray-500">Destination:</span> {formatTxField(createTx.Destination)}</p>
             <p><span className="text-gray-500">Condition:</span> {(String(createTx.Condition ?? '')).slice(0, 24)}…</p>
-            <p><span className="text-gray-500">Signers:</span> {signersCreate}/{quorum} (M-of-N)</p>
+            <p><span className="text-gray-500">Signers:</span> {signersCreate}/{Math.max(1, totalConfiguredSigners)} (signed/total)</p>
+            <p><span className="text-gray-500">Quorum:</span> {quorum}</p>
           </div>
         </section>
 
@@ -369,7 +378,8 @@ export function PendingReleasesPage({ wallet, onBack }: PendingReleasesPageProps
             <p><span className="text-gray-500">OfferSequence:</span> {formatTxField(finishTx.OfferSequence)}</p>
             <p><span className="text-gray-500">Condition:</span> {(String(finishTx.Condition ?? '')).slice(0, 24)}…</p>
             <p><span className="text-gray-500">Fulfillment:</span> {(String(finishTx.Fulfillment ?? '')).slice(0, 24)}…</p>
-            <p><span className="text-gray-500">Signers:</span> {signersFinish}/{quorum} (M-of-N)</p>
+            <p><span className="text-gray-500">Signers:</span> {signersFinish}/{Math.max(1, totalConfiguredSigners)} (signed/total)</p>
+            <p><span className="text-gray-500">Quorum:</span> {quorum}</p>
           </div>
         </section>
 

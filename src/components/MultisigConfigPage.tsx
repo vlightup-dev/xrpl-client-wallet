@@ -13,6 +13,13 @@ const API_BASE_URL =
 
 const MAX_SIGNERS = 5;
 const MIN_SIGNERS = 2;
+const MIN_SIGNER_WEIGHT = 1;
+const MAX_SIGNER_WEIGHT = 65535;
+
+type SignerRow = {
+  address: string;
+  weight: number;
+};
 
 type MultisigConfigPageProps = {
   address: string;
@@ -24,7 +31,10 @@ type MultisigConfigPageProps = {
 };
 
 export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1Saved }: MultisigConfigPageProps) {
-  const [signers, setSigners] = useState<string[]>(['', '']);
+  const [signers, setSigners] = useState<SignerRow[]>([
+    { address: '', weight: 1 },
+    { address: '', weight: 1 },
+  ]);
   const [quorum, setQuorum] = useState(2);
   const [hasStoredSigner1, setHasStoredSigner1] = useState(false);
 
@@ -35,7 +45,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       if (cancelled) return;
       if (stored) {
         setHasStoredSigner1(true);
-        setSigners((prev) => [stored, ...prev.slice(1)]);
+        setSigners((prev) => [{ ...prev[0], address: stored }, ...prev.slice(1)]);
       }
     });
     return () => { cancelled = true; };
@@ -53,18 +63,35 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
   const [pendingSignerWallet, setPendingSignerWallet] = useState<{ seed: string; address: string } | null>(null);
   const [seedRevealed, setSeedRevealed] = useState(false);
 
-  const signerTrims = signers.map((s) => s.trim()).filter(Boolean);
+  const totalSignerWeight = signers.reduce((sum, signer) => {
+    const parsed = Math.trunc(Number(signer.weight));
+    return sum + (Number.isFinite(parsed) ? parsed : 0);
+  }, 0);
+  const signerRows = signers
+    .map((s) => ({ address: s.address.trim(), weight: Math.trunc(Number(s.weight)) }))
+    .filter((s) => s.address.length > 0);
+  const signerAddresses = signerRows.map((s) => s.address);
+  const signerWeights = signerRows.map((s) => s.weight);
+  const activeSignerWeightTotal = signerWeights.reduce((sum, w) => sum + w, 0);
   const notSelf = (s: string) => s.length > 0 && s !== address;
-  const uniqueSigners = [...new Set(signerTrims)];
-  const validSigners = signerTrims.length >= MIN_SIGNERS && signerTrims.length <= MAX_SIGNERS
-    && uniqueSigners.length === signerTrims.length
-    && signerTrims.every(notSelf);
-  const canSave = validSigners;
+  const uniqueSigners = [...new Set(signerAddresses)];
+  const validWeights = signerRows.every((s) => Number.isInteger(s.weight) && s.weight >= MIN_SIGNER_WEIGHT && s.weight <= MAX_SIGNER_WEIGHT);
+  const validSigners = signerAddresses.length >= MIN_SIGNERS && signerAddresses.length <= MAX_SIGNERS
+    && uniqueSigners.length === signerAddresses.length
+    && signerAddresses.every(notSelf)
+    && validWeights;
+  const canSave = validSigners && quorum >= 1 && quorum <= activeSignerWeightTotal;
+
+  useEffect(() => {
+    if (quorum > activeSignerWeightTotal) {
+      setQuorum(Math.max(1, activeSignerWeightTotal));
+    }
+  }, [quorum, activeSignerWeightTotal]);
 
   const handleSave = useCallback(async () => {
-    if (!wallet || !canSave || signerTrims.length < MIN_SIGNERS) return;
-    if (quorum > signerTrims.length) {
-      setError(`Quorum (${quorum}) cannot exceed number of signers (${signerTrims.length}). Choose M ≤ N or add more signers.`);
+    if (!wallet || !canSave || signerAddresses.length < MIN_SIGNERS) return;
+    if (quorum > activeSignerWeightTotal) {
+      setError(`Quorum (${quorum}) cannot exceed total signer weight (${activeSignerWeightTotal}) for signers with addresses. Lower quorum or increase signer weights.`);
       return;
     }
     setSubmitting(true);
@@ -75,8 +102,8 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
     try {
       await client.connect();
       setStepMessage('Step 2: Submitting SignerListSet…');
-      const entries: { SignerEntry: { Account: string; SignerWeight: number } }[] = signerTrims.map((acc) => ({
-        SignerEntry: { Account: acc, SignerWeight: 1 },
+      const entries: { SignerEntry: { Account: string; SignerWeight: number } }[] = signerRows.map((signer) => ({
+        SignerEntry: { Account: signer.address, SignerWeight: signer.weight },
       }));
       const ledgerIndexSignerList = await client.getLedgerIndex();
       const tx = {
@@ -105,7 +132,8 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       setStepMessage('Step 4: Registering with server…');
       await setMultisigAccount(address);
       const registerBody: Record<string, unknown> = {
-        signer_addresses: signerTrims,
+        signer_addresses: signerAddresses,
+        signer_weights: signerWeights,
         signer_quorum: quorum,
       };
       if (API_BASE_URL) {
@@ -130,13 +158,16 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
         }
       }
       setStepMessage(null);
-      await setMultisigSignerCount(signerTrims.length);
+      await setMultisigSignerCount(signerAddresses.length);
       await setMultisigQuorum(quorum);
       onSaved?.();
       setSuccess(
         `Multi-sig configured. SignerListSet: ${txHash ?? '—'}. Master key disabled. This wallet is now the multi-sig account; use a signer wallet to initiate escrows.`
       );
-      setSigners(['', '']);
+      setSigners([
+        { address: '', weight: 1 },
+        { address: '', weight: 1 },
+      ]);
       setQuorum(2);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to set up multi-sig';
@@ -145,7 +176,8 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
         setStepMessage('Step 4: Updating multisig config on server…');
         await setMultisigAccount(address);
         const registerBody: Record<string, unknown> = {
-          signer_addresses: signerTrims,
+          signer_addresses: signerAddresses,
+          signer_weights: signerWeights,
           signer_quorum: quorum,
         };
         if (API_BASE_URL) {
@@ -169,13 +201,16 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
             }
           }
         }
-        await setMultisigSignerCount(signerTrims.length);
+        await setMultisigSignerCount(signerAddresses.length);
         await setMultisigQuorum(quorum);
         onSaved?.();
         setSuccess(
           'Signer list updated on ledger. Master key was already disabled. Multisig config (signers and quorum) updated on server.'
         );
-        setSigners(['', '']);
+        setSigners([
+          { address: '', weight: 1 },
+          { address: '', weight: 1 },
+        ]);
         setQuorum(2);
       } else if (msg.includes('LastLedgerSequence') || msg.includes('ledger sequence')) {
         setError(
@@ -189,7 +224,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       client.disconnect();
       setSubmitting(false);
     }
-  }, [address, wallet, quorum, signerTrims, canSave, onSaved]);
+  }, [address, wallet, quorum, signerRows, signerAddresses, signerWeights, activeSignerWeightTotal, canSave, onSaved]);
 
   const handleCreateSignerWalletClick = useCallback(() => {
     setError(null);
@@ -214,7 +249,7 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       }
       await setMultisigSigner1(password, newWallet.publicKey, newWallet.privateKey, newWallet.address);
       setHasStoredSigner1(true);
-      setSigners((prev) => [newWallet.address, ...prev.slice(1)]);
+      setSigners((prev) => [{ ...prev[0], address: newWallet.address }, ...prev.slice(1)]);
       setPendingSignerWallet({ seed: newWallet.seed, address: newWallet.address });
       setSeedRevealed(false);
       setShowPasswordForSigner1(false);
@@ -266,8 +301,8 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
       </section>
 
       <section className="flex flex-col gap-2">
-        <label className="text-xs font-medium text-gray-400">Signers (2–5 addresses)</label>
-        {signers.map((value, index) => (
+        <label className="text-xs font-medium text-gray-400">Signers (2–5 addresses, each with weight)</label>
+        {signers.map((signer, index) => (
           <div key={index} className="flex flex-col gap-1">
             <label className="text-[11px] text-gray-500" htmlFor={`ms-signer-${index}`}>
               Signer {index + 1}
@@ -276,19 +311,37 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
               <input
                 id={`ms-signer-${index}`}
                 type="text"
-                value={value}
+                value={signer.address}
                 onChange={(e) => {
                   setSigners((prev) => {
                     const next = [...prev];
-                    next[index] = e.target.value;
+                    next[index] = { ...next[index], address: e.target.value };
                     return next;
                   });
-                  if (signerTrims.length >= 2 && quorum > signerTrims.length - (value.trim() ? 0 : 1)) {
-                    setQuorum((q) => Math.max(1, Math.min(q, signerTrims.length - (value.trim() ? 0 : 1))));
-                  }
                 }}
                 placeholder="rOtherSigner..."
                 className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-xs font-mono placeholder-gray-500 focus:border-sky-500 focus:outline-none"
+              />
+              <input
+                id={`ms-weight-${index}`}
+                type="number"
+                min={MIN_SIGNER_WEIGHT}
+                max={MAX_SIGNER_WEIGHT}
+                value={signer.weight}
+                onChange={(e) => {
+                  const parsed = Number(e.target.value);
+                  setSigners((prev) => {
+                    const next = [...prev];
+                    next[index] = {
+                      ...next[index],
+                      weight: Number.isFinite(parsed) ? parsed : MIN_SIGNER_WEIGHT,
+                    };
+                    return next;
+                  });
+                }}
+                placeholder="Weight"
+                className="w-20 shrink-0 px-2 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-xs focus:border-sky-500 focus:outline-none"
+                aria-label={`Signer ${index + 1} weight`}
               />
               {index === 0 && !hasStoredSigner1 && !showPasswordForSigner1 && !pendingSignerWallet && (
                 <button
@@ -304,7 +357,6 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
                   type="button"
                   onClick={() => {
                     setSigners((prev) => prev.filter((_, i) => i !== index));
-                    setQuorum((q) => Math.min(q, Math.max(1, signers.length - 1)));
                   }}
                   className="shrink-0 px-2 py-2 rounded-lg text-xs font-medium text-gray-400 hover:text-red-400 transition-colors"
                   aria-label={`Remove signer ${index + 1}`}
@@ -318,12 +370,15 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
         {signers.length < MAX_SIGNERS && (
           <button
             type="button"
-            onClick={() => setSigners((prev) => [...prev, ''])}
+            onClick={() => setSigners((prev) => [...prev, { address: '', weight: 1 }])}
             className="mt-1 py-2 px-3 rounded-lg text-xs font-medium border border-dashed border-gray-600 text-gray-400 hover:border-sky-500 hover:text-sky-400 transition-colors"
           >
             Add a signer
           </button>
         )}
+        <p className="text-[11px] text-gray-500">
+          Total signer weight: {totalSignerWeight}
+        </p>
         {showPasswordForSigner1 && (
           <div className="flex flex-col gap-2 p-3 rounded-lg bg-gray-800 border border-gray-600">
             <p className="text-xs text-gray-300">
@@ -396,23 +451,20 @@ export function MultisigConfigPage({ address, wallet, onBack, onSaved, onSigner1
 
       <section className="flex flex-col gap-2">
         <label className="text-xs font-medium text-gray-400" htmlFor="ms-quorum">
-          Quorum (M)
+          Quorum (required total weight)
         </label>
         <p className="text-[11px] text-gray-500">
-          Number of signatures required to authorize (M). Must be 2–5 and ≤ number of signers (N). Validated on Save.
+          Total signer weight required to authorize. Must be at least 1 and cannot exceed total active signer weight ({activeSignerWeightTotal}).
         </p>
-        <select
+        <input
           id="ms-quorum"
+          type="number"
+          min={1}
+          max={Math.max(1, activeSignerWeightTotal)}
           value={quorum}
-          onChange={(e) => setQuorum(Number(e.target.value))}
+          onChange={(e) => setQuorum(Math.max(1, Math.trunc(Number(e.target.value) || 1)))}
           className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm focus:border-sky-500 focus:outline-none"
-        >
-          {[2, 3, 4, 5].map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
+        />
       </section>
 
       {error && <p className="text-xs text-red-400">{error}</p>}

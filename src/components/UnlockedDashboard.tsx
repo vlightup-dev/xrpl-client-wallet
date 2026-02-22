@@ -16,12 +16,13 @@ type UnlockedDashboardProps = {
   wallet: Wallet | null;
   onLogout: () => void;
   onRegisterSbt?: () => void;
+  onGetFaucet?: () => void;
   onSendPayment?: () => void;
   onPendingReleases?: () => void;
   onConfigureMultisig?: () => void;
 };
 
-export function UnlockedDashboard({ address, wallet: _wallet, onLogout, onRegisterSbt, onSendPayment, onPendingReleases, onConfigureMultisig }: UnlockedDashboardProps) {
+export function UnlockedDashboard({ address, wallet: _wallet, onLogout, onRegisterSbt, onGetFaucet, onSendPayment, onPendingReleases, onConfigureMultisig }: UnlockedDashboardProps) {
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -203,6 +204,18 @@ export function UnlockedDashboard({ address, wallet: _wallet, onLogout, onRegist
             className="w-full py-2 px-4 rounded-lg text-sm font-medium text-center text-sky-400 hover:text-white border border-sky-700 hover:border-sky-500 transition-colors"
           >
             Register SBT →
+          </button>
+        </section>
+      )}
+
+      {onGetFaucet && (
+        <section className="p-3 rounded-lg bg-gray-800 border border-gray-700">
+          <button
+            type="button"
+            onClick={onGetFaucet}
+            className="w-full py-2 px-4 rounded-lg text-sm font-medium text-center text-sky-400 hover:text-white border border-sky-700 hover:border-sky-500 transition-colors"
+          >
+            Get faucet →
           </button>
         </section>
       )}
